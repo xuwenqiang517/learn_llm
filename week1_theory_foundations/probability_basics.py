@@ -12,7 +12,10 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy import stats
+import matplotlib
+
+matplotlib.rcParams['font.family'] = ['DejaVu Sans', 'Arial', 'sans-serif']
+matplotlib.rcParams['axes.unicode_minus'] = False
 
 
 # ============================================================
@@ -163,14 +166,14 @@ def explain_expectation_variance():
         bar = '█' * int(prob * 50)
         print(f"  {word}: {prob:.2f} {bar}")
     
-    print(f"\n统计量:")
-    print(f"  期望 E[X] = {expectation:.2f}")
-    print(f"  方差 Var(X) = {variance:.2f}")
-    print(f"  熵 H(X) = {entropy:.2f} bits")
-    print(f"\n解读:")
-    print(f"  - 期望 2.65 表示预测主要分布在 '学习' 附近")
-    print(f"  - 方差 3.21 表示预测有一定的不确定性")
-    print(f"  - 熵 2.45 bits 表示平均需要 2.45 bits 来编码这个预测")
+    print(f"\nStatistics:")
+    print(f"  Expectation E[X] = {expectation:.2f}")
+    print(f"  Variance Var(X) = {variance:.2f}")
+    print(f"  Entropy H(X) = {entropy:.2f} bits")
+    print(f"\nInterpretation:")
+    print(f"  - Expectation 2.65 indicates prediction is centered near 'learning'")
+    print(f"  - Variance 3.21 indicates some uncertainty in prediction")
+    print(f"  - Entropy 2.45 bits means 2.45 bits needed to encode this prediction on average")
     print()
 
 
@@ -227,9 +230,9 @@ def explain_softmax():
         probs_T = softmax_with_temp(logits, T)
         dist_str = '[' + ', '.join([f'{p:.3f}' for p in probs_T]) + ']'
         if T <= 1.0:
-            dist_str += ' 🔥'  # 更确定
+            dist_str += ' [CONFIDENT]'  # 更确定
         else:
-            dist_str += ' 🎲'  # 更随机
+            dist_str += ' [RANDOM]'  # 更随机
         print(f"{T:<8} {dist_str:<60}")
     
     print()
@@ -243,9 +246,9 @@ def explain_softmax():
         probs_T = softmax_with_temp(logits, T)
         label = f'T={T}'
         if T == 0.1:
-            label += ' (🔥确定)'
+            label += ' (CONFIDENT)'
         elif T == 2.0:
-            label += ' (🎲随机)'
+            label += ' (RANDOM)'
         axes[0].bar(x + (T-1)*0.15, probs_T, width=0.3, label=label, alpha=0.8)
     
     axes[0].set_xlabel('Token Index')
@@ -329,14 +332,14 @@ def explain_cross_entropy_kl():
     print(f"困惑度 (Perplexity): {2 ** cross_entropy:.2f}")
     
     # 不同预测质量的对比
-    print(f"\n不同预测质量的交叉熵损失对比:")
+    print(f"\nCross-Entropy Loss Comparison for Different Prediction Qualities:")
     predictions = [
-        ([0.05, 0.10, 0.70, 0.10, 0.05], "高质量预测"),
-        ([0.20, 0.20, 0.30, 0.20, 0.10], "中等质量预测"),
-        ([0.05, 0.05, 0.05, 0.05, 0.80], "错误预测（高损失）"),
+        ([0.05, 0.10, 0.70, 0.10, 0.05], "High Quality Prediction"),
+        ([0.20, 0.20, 0.30, 0.20, 0.10], "Medium Quality Prediction"),
+        ([0.05, 0.05, 0.05, 0.05, 0.80], "Wrong Prediction (High Loss)"),
     ]
     
-    print(f"{'预测分布':<45} {'交叉熵损失':<12} {'困惑度':<10}")
+    print(f"{'Prediction Distribution':<45} {'CE Loss':<12} {'Perplexity':<10}")
     print("-" * 70)
     
     for pred, desc in predictions:
@@ -364,38 +367,38 @@ if __name__ == "__main__":
     print("=" * 70 + "\n")
     
     # 运行各个示例
-    explain_conditional_probability()
-    explain_joint_probability()
-    explain_expectation_variance()
+    # explain_conditional_probability()
+    # explain_joint_probability()
+    # explain_expectation_variance()
     explain_softmax()
-    explain_cross_entropy_kl()
+    # explain_cross_entropy_kl()
     
-    print("=" * 70)
-    print("学习总结")
-    print("=" * 70)
-    print("""
-核心概念回顾：
+    # print("=" * 70)
+    # print("学习总结")
+    # print("=" * 70)
+#     print("""
+# 核心概念回顾：
 
-1. 条件概率 P(A|B)
-   - 语言模型的核心：P(next_word | context)
+# 1. 条件概率 P(A|B)
+#    - 语言模型的核心：P(next_word | context)
    
-2. 联合概率 P(A∩B)
-   - 句子概率：P(w_1, w_2, ..., w_n) = Π P(w_i | w_1...w_{i-1})
+# 2. 联合概率 P(A∩B)
+#    - 句子概率：P(w_1, w_2, ..., w_n) = Π P(w_i | w_1...w_{i-1})
    
-3. 期望与方差
-   - 期望：预测分布的"重心"
-   - 方差：预测的不确定性
+# 3. 期望与方差
+#    - 期望：预测分布的"重心"
+#    - 方差：预测的不确定性
    
-4. Softmax 函数
-   - 将 logits 转换为概率分布
-   - 温度参数控制分布的"锐利"程度
+# 4. Softmax 函数
+#    - 将 logits 转换为概率分布
+#    - 温度参数控制分布的"锐利"程度
    
-5. 交叉熵损失
-   - 语言模型训练的核心损失函数
-   - 困惑度是评估语言模型的重要指标
+# 5. 交叉熵损失
+#    - 语言模型训练的核心损失函数
+#    - 困惑度是评估语言模型的重要指标
 
-下一步学习：
-- 线性代数：矩阵运算、特征分解
-- 优化算法：梯度下降、Adam
-- 注意力机制：Query-Key-Value 抽象
-    """)
+# 下一步学习：
+# - 线性代数：矩阵运算、特征分解
+# - 优化算法：梯度下降、Adam
+# - 注意力机制：Query-Key-Value 抽象
+#     """)
