@@ -1,0 +1,15 @@
+{
+  "symbol": "600211",
+  "date": "20251231",
+  "open": 42.15,
+  "close": 42.55,
+  "high": 42.8,
+  "low": 41.94,
+  "volume": 29329,
+  "amount": 124348972.0,
+  "amplitude": 2.05,
+  "change_pct": 1.19,
+  "change": 0.5,
+  "turnover": 0.91,
+  "pre_close": 42.1245
+}

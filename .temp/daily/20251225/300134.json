@@ -1,0 +1,15 @@
+{
+  "symbol": "300134",
+  "date": "20251225",
+  "open": 12.31,
+  "close": 12.21,
+  "high": 12.34,
+  "low": 12.15,
+  "volume": 99523,
+  "amount": 121674435.0,
+  "amplitude": 1.54,
+  "change_pct": -0.81,
+  "change": -0.1,
+  "turnover": 1.4,
+  "pre_close": 12.087900000000001
+}

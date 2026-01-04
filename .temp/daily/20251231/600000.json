@@ -1,0 +1,15 @@
+{
+  "symbol": "600000",
+  "date": "20251231",
+  "open": 12.35,
+  "close": 12.44,
+  "high": 12.45,
+  "low": 12.14,
+  "volume": 824459,
+  "amount": 1016605870.0,
+  "amplitude": 2.5,
+  "change_pct": 0.4,
+  "change": 0.05,
+  "turnover": 0.25,
+  "pre_close": 12.3156
+}

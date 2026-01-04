@@ -1,0 +1,15 @@
+{
+  "symbol": "001234",
+  "date": "20251229",
+  "open": 27.27,
+  "close": 27.33,
+  "high": 27.44,
+  "low": 26.91,
+  "volume": 18259,
+  "amount": 49657885.0,
+  "amplitude": 1.96,
+  "change_pct": 0.85,
+  "change": 0.23,
+  "turnover": 2.0,
+  "pre_close": 27.0567
+}

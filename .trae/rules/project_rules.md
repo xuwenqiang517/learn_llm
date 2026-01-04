@@ -1,0 +1,1 @@
+运行代码py,安装包之前 都执行一下，conda activate py311
