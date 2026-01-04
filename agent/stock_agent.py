@@ -13,11 +13,12 @@ from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langchain_core.runnables import RunnableSequence
 
 from agent.common import create_dashscope_chat
-from agent.stock_searh_tool import search_rising_stocks
+from agent.stock_searh_tool import search_rising_stocks, generate_table_from_results
+from agent.send_stock_analysis import send_latest_analysis
 
 
 @tool
-def search_rising_stocks_tool(days: int = 3, market: str = "all", min_increase: float = 5.0, include_kc: bool = False, include_cy: bool = False) -> str:
+def search_rising_stocks_tool(days: int = 3, market: str = "all", min_increase: float = 10.0, include_kc: bool = False, include_cy: bool = False) -> str:
     """
     搜索连续N天上涨的A股股票
 
@@ -29,143 +30,51 @@ def search_rising_stocks_tool(days: int = 3, market: str = "all", min_increase: 
         include_cy: 是否包含创业板，默认False
 
     Returns:
-        JSON格式的股票搜索结果
+        JSON格式的股票搜索结果（压缩模式，减少token消耗）
     """
     logger.info(f"工具被调用: days={days}, market={market}, min_increase={min_increase}, include_kc={include_kc}, include_cy={include_cy}")
-    result = search_rising_stocks(days=days, market=market, min_increase=min_increase, include_kc=include_kc, include_cy=include_cy)
-    logger.info(f"工具返回结果: {len(result.get('data', {}).get('stocks', []))} 只股票")
-    return json.dumps(result, ensure_ascii=False, indent=2)
+    df = search_rising_stocks(days=days, market=market, min_increase=min_increase, include_kc=include_kc, include_cy=include_cy)
+    logger.info(f"工具返回结果: {len(df)} 只股票")
+
+    from agent.stock_searh_tool import format_stock_result
+    return format_stock_result(df, days, compress=True)
 
 
 tools = [search_rising_stocks_tool]
 
-SYSTEM_PROMPT = """你是一个专业的A股股票分析助手。
+SYSTEM_PROMPT = """你是专业的A股股票分析师，精通通过数据分析发现投资机会。
 
-## 核心任务
+## 分析任务
+基于搜索结果，深入分析连续上涨股票的投资价值。
 
-分析连续N天上涨的股票，结合**成交量**和**概念板块**进行综合判断，找出真正有资金关注、有板块效应的投资机会，而不是简单地追逐涨幅。
+## 分析要点
 
-## 可用工具
+1. **概念板块分析**
+   - 统计所有股票的概念分布，找出出现频次最高的热门概念
+   - 分析概念板块的联动效应（多只同概念股票同时上涨）
+   - 识别概念炒作的持续性
 
-### search_rising_stocks_tool
-搜索连续N天上涨的A股股票。
+2. **成交量分析**
+   - 对比近期成交量与历史均值，识别放量上涨的股票
+   - 分析成交量放大的股票是否配合价格上涨
+   - 关注量价配合良好的标的
 
-**参数说明**：
-- `days`: 连续上涨天数，整数，默认为 3
-  - 连续涨停板用 `days=2`（只找连续2天涨停的）
-  - 普通连涨用 `days=3`
-- `market`: 市场类型，字符串，默认为 "all"
-  - "all": 全市场
-  - "sh": 上海主板（60开头）
-  - "sz": 深圳主板（00开头，不含300）
-- `min_increase`: 最小累计涨幅阈值，浮点数，默认为 5.0
-  - 只看涨幅不看涨停：设低一点如 5.0-10.0
-  - 找强势股：设高一点如 15.0-30.0
-- `include_kc`: 是否包含科创板，布尔值，默认为 False
-  - 科创板股票代码以 688 开头
-  - 科创板涨跌幅为 20%，风险较高
-- `include_cy`: 是否包含创业板，布尔值，默认为 False
-  - 创业板股票代码以 300 开头
-  - 创业板涨跌幅为 20%，风险较高
+3. **强势股筛选**
+   - 累计涨幅适中（15%-50%），避免追高
+   - 连续上涨天数越多越强势
+   - 主营业务清晰、概念热度高的优先
 
-**重要**：默认情况下必须排除科创板和创业板，只分析主板股票。
+4. **风险识别**
+   - 涨幅过大（>60%）的股票谨慎追高
+   - 无量上涨的股票风险较高
+   - 业绩亏损或基本面恶化的标的规避
 
-## 分析方法论
+## 输出要求
+1. **热门概念排行榜**（Top 5-8，按出现频次排序，标注每概念包含的股票数）
+2. **重点关注股票池**（5-10只，放量上涨+热门概念+量价配合）
+3. **风险提示**（规避高位无量、业绩亏损等风险标的）
 
-### 第一步：理解用户需求
-- 分析用户想要找什么类型的股票
-- 确定筛选参数（天数、涨幅、市场、是否包含KC/CY）
-
-### 第二步：调用工具获取数据
-- 使用 search_rising_stocks_tool 获取符合条件的股票
-- 仔细查看返回的 JSON 数据结构，了解有哪些字段可用
-
-### 第三步：数据分析（核心）
-
-从返回数据中提取以下关键信息：
-
-1. **股票基本信息**
-   - 股票代码、名称
-   - 累计涨幅
-   - 近3日每日涨幅
-   - 所属行业
-   - 所属概念（**重点关注！**）
-   - 成交量（如果数据中有）
-
-2. **成交量分析（非常重要！）**
-   - 找出成交量明显放大的股票（相比平时成交额/成交量翻倍）
-   - 放量上涨 = 资金追捧，后市可期
-   - 缩量上涨 = 主力控盘，谨慎追高
-   - 放巨量不涨 = 主力出货，立即回避
-
-3. **概念板块分析（核心任务！）**
-   - **统计所有股票中概念出现的频次**，不要只看前几只股票！
-   - 遍历全部股票，统计每个概念（如：机器人概念、新能源、半导体等）出现的次数
-   - 按频次排序，找出最热门的概念板块
-   - 分析是否有板块效应（多只相关概念股票同时上涨）
-   - 找出概念板块中的龙头股（涨幅最大、成交量最活跃的）
-   - **示例格式**：
-     ```
-     热门概念排行榜：
-     1. 机器人概念：15只股票（占比17%）
-        - 代表股：XXX（+30%）、YYY（+28%）、ZZZ（+25%）
-        - 板块强度：强，多股联动上涨
-     2. 新能源：12只股票（占比14%）
-        - 代表股：...
-     ```
-
-4. **行业分布**
-   - 统计行业分布
-   - 找出资金集中流入的行业
-
-### 第四步：综合判断
-
-**不要被涨幅迷惑！** 要结合以下因素判断：
-
-| 特征 | 解读 | 操作建议 |
-|------|------|----------|
-| 放量涨停 + 热门概念 | 资金追捧，板块效应强 | 重点关注 |
-| 缩量涨停 + 冷门概念 | 主力控盘，跟风盘少 | 谨慎参与 |
-| 放量不涨停 | 可能有主力出货 | 观望为主 |
-| 成交量萎靡 | 市场关注度低 | 不值得关注 |
-
-### 第五步：输出分析报告
-
-必须包含以下内容：
-
-1. **市场概览**
-   - 符合条件股票总数
-   - 主板 vs 科创板/创业板分布
-   - 市场整体情绪（强势/中性/弱势）
-
-2. **热门概念板块分析**
-   - 列出所有热门概念，按出现频次排序
-   - 每个概念下的代表性股票
-   - 该概念的板块强度（是否有联动效应）
-
-3. **热门行业板块分析**
-   - 列出资金集中流入的行业
-   - 行业龙头股是谁
-
-4. **重点关注股票（结合成交量）**
-   - 成交量明显放大 + 热门概念的股票
-   - 板块效应最强的股票
-   - 按"综合强度"排序（涨幅 × 成交量放大倍数 × 概念热度）
-
-5. **风险提示**
-   - 放量不涨的股票可能是出货
-   - 冷门概念股缺乏跟风盘
-   - 连续涨停后追高风险
-
-## 输出格式要求
-
-- 必须基于真实数据分析
-- 直接给出分析结论，不要描述数据结构
-- 不要说"根据返回的数据"或"数据显示"
-- 不要重复字段名
-- 用中文标点符号
-- 表格要清晰，使用 Markdown 表格格式
-- 重点内容用 **加粗** 强调"""
+用简洁专业的语言给出分析结论，数据支撑论点。"""
 
 
 def run_stock_analysis(user_query: str, debug: bool = False) -> str:
@@ -193,6 +102,8 @@ def run_stock_analysis(user_query: str, debug: bool = False) -> str:
     messages = [{"role": "user", "content": user_query}]
     max_iterations = 5
     iteration = 0
+    last_tool_result = None
+    tool_call_args = None
 
     while iteration < max_iterations:
         iteration += 1
@@ -269,6 +180,28 @@ def run_stock_analysis(user_query: str, debug: bool = False) -> str:
             output_file.write_text(result_content, encoding="utf-8")
             logger.info(f"分析结果已保存到: {output_file}")
 
+            if last_tool_result and tool_call_args:
+                try:
+                    tool_result_data = json.loads(last_tool_result)
+                    table_content = generate_table_from_results(tool_result_data)
+                    table_file = output_dir / f"stock_table_{timestamp}.md"
+                    table_file.write_text(table_content, encoding="utf-8")
+                    logger.info(f"表格数据已保存到: {table_file}")
+                except json.JSONDecodeError as e:
+                    logger.warning(f"解析工具结果失败，跳过表格生成: {e}")
+                except Exception as e:
+                    logger.warning(f"生成表格失败: {e}")
+
+            try:
+                logger.info("分析完成，自动发送结果到飞书...")
+                send_success = send_latest_analysis()
+                if send_success:
+                    logger.info("✅ 飞书消息发送成功")
+                else:
+                    logger.warning("⚠️ 飞书消息发送失败")
+            except Exception as e:
+                logger.error(f"发送飞书消息异常: {e}")
+
             return result_content
 
         for call in tool_calls:
@@ -286,9 +219,12 @@ def run_stock_analysis(user_query: str, debug: bool = False) -> str:
                     tool_result = tool_func.invoke(function_args)
                     if debug:
                         logger.info(f"工具返回: {len(tool_result)} 字符")
+                    last_tool_result = tool_result
+                    tool_call_args = function_args
                 except Exception as e:
                     tool_result = f"工具执行错误: {str(e)}"
                     logger.error(f"工具执行错误: {e}")
+                    last_tool_result = None
 
                 messages.append({
                     "role": "assistant",
