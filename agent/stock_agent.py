@@ -15,7 +15,12 @@ from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
-from agent.stock_searh_tool import search_rising_stocks, generate_table_from_results
+from agent.stock_searh_tool import search_rising_stocks
+from agent.stock_rising_calculator import generate_table_from_results
+from pathlib import Path
+BASE_DIR = Path(__file__).parent.parent
+TOOLS_OUTPUT_DIR = BASE_DIR / ".temp" / "output" / "tools"
+ANALYSIS_OUTPUT_DIR = BASE_DIR / ".temp" / "output" / "analysis"
 from agent.send_stock_analysis import send_latest_analysis
 from agent.common import create_ollama_chat, create_dashscope_chat
 
@@ -81,11 +86,11 @@ class StockCallbackHandler(BaseCallbackHandler):
             logger.info(f"工具返回: {len(str(output))} 字符")
 
     def _save_and_send_result(self, result_content: str, config: dict = None) -> None:
-        output_dir = Path("/Users/JDb/Desktop/github/learn_llm/.temp")
-        output_dir.mkdir(parents=True, exist_ok=True)
+        """保存模型分析结果到 output/analysis/ 目录"""
+        ANALYSIS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = output_dir / f"stock_analysis_{timestamp}.md"
+        output_file = ANALYSIS_OUTPUT_DIR / f"stock_analysis_{timestamp}.md"
         output_file.write_text(result_content, encoding="utf-8")
         logger.info(f"分析结果已保存到: {output_file}")
 
@@ -151,15 +156,15 @@ def search_rising_stocks_tool(days: int = 3, market: str = "all", min_increase: 
     
     logger.info(f"表格内容类型: {type(table_content)}, 长度: {len(table_content)}")
     
-    if table_content:
-        output_dir = Path("/Users/JDb/Desktop/github/learn_llm/.temp")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        table_file = output_dir / f"stock_table_{timestamp}.md"
-        table_file.write_text(table_content, encoding="utf-8")
-        logger.info(f"表格数据已保存到: {table_file}")
+    # 表格文件已由 search_rising_stocks 保存到 output/tools/ 目录
+    # 这里只记录日志，不再重复保存
+    table_path = result.get("table_path")
+    if table_path:
+        logger.info(f"表格数据已保存到: {table_path}")
+    elif table_content:
+        logger.info("表格内容已生成，但未保存到文件")
     else:
-        logger.warning("表格内容为空，未保存表格文件")
+        logger.warning("表格内容为空")
     
     return json.dumps({"success": True, "message": result.get("message", ""), "data": data}, ensure_ascii=False, indent=2)
 

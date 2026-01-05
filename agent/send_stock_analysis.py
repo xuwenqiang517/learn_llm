@@ -99,7 +99,7 @@ class FeishuBot:
 
 def get_latest_analysis_file(temp_dir: str = "/Users/JDb/Desktop/github/learn_llm/.temp") -> Optional[Path]:
     """
-    获取最新的股票分析文件
+    获取最新的股票分析文件（从 output/analysis/ 目录）
 
     Args:
         temp_dir: .temp 目录路径
@@ -107,12 +107,12 @@ def get_latest_analysis_file(temp_dir: str = "/Users/JDb/Desktop/github/learn_ll
     Returns:
         最新分析文件的 Path 对象，如果没有找到返回 None
     """
-    temp_path = Path(temp_dir)
-    if not temp_path.exists():
-        logger.error(f"目录不存在: {temp_dir}")
+    analysis_dir = Path(temp_dir) / "output" / "analysis"
+    if not analysis_dir.exists():
+        logger.error(f"目录不存在: {analysis_dir}")
         return None
 
-    analysis_files = list(temp_path.glob("stock_analysis_*.md"))
+    analysis_files = list(analysis_dir.glob("stock_analysis_*.md"))
     if not analysis_files:
         logger.error("未找到股票分析文件")
         return None
@@ -124,7 +124,7 @@ def get_latest_analysis_file(temp_dir: str = "/Users/JDb/Desktop/github/learn_ll
 
 def get_latest_table_file(temp_dir: str = "/Users/JDb/Desktop/github/learn_llm/.temp") -> Optional[Path]:
     """
-    获取最新的股票表格文件
+    获取最新的股票表格文件（从 output/tools/ 目录）
 
     Args:
         temp_dir: .temp 目录路径
@@ -132,12 +132,13 @@ def get_latest_table_file(temp_dir: str = "/Users/JDb/Desktop/github/learn_llm/.
     Returns:
         最新表格文件的 Path 对象，如果没有找到返回 None
     """
-    temp_path = Path(temp_dir)
-    if not temp_path.exists():
-        logger.error(f"目录不存在: {temp_dir}")
+    tools_dir = Path(temp_dir) / "output" / "tools"
+    if not tools_dir.exists():
+        logger.error(f"目录不存在: {tools_dir}")
         return None
 
-    table_files = list(temp_path.glob("stock_table_*.md"))
+    # 查找所有表格文件（包括 rising_stocks_*.md 和 stock_table_*.md）
+    table_files = list(tools_dir.glob("rising_stocks_*.md")) + list(tools_dir.glob("stock_table_*.md"))
     if not table_files:
         logger.warning("未找到股票表格文件")
         return None
