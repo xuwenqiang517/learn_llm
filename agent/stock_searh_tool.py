@@ -37,7 +37,7 @@ from utils.log_util import LogUtil
 # 导入独立的工具模块
 from agent.stock_data_updater import update_stock_data
 from agent.stock_rising_calculator import calculate_rising_stocks
-from agent.send_stock_analysis import send_latest_analysis
+from agent.send_stock_analysis import send_latest_analysis, send_concept_analysis_chart
 from agent.stock_concept_analyzer import analyze_concepts
 
 logger = LogUtil.get_logger(__name__)
@@ -59,7 +59,9 @@ def search_rising_stocks(days: int = 3, market: str = "all",
                         include_kc: bool = False, 
                         include_cy: bool = False,
                         auto_update_cache: bool = True,
-                        send_to_feishu: bool = False) -> Dict:
+                        send_to_feishu: bool = False,
+                        feishu_app_id: Optional[str] = None,
+                        feishu_app_secret: Optional[str] = None) -> Dict:
     """
     搜索连续N天上涨的股票（服务主入口）
     
@@ -76,6 +78,8 @@ def search_rising_stocks(days: int = 3, market: str = "all",
         include_cy: 是否包含创业板，默认False
         auto_update_cache: 是否自动更新缓存，默认True
         send_to_feishu: 是否发送到飞书，默认False
+        feishu_app_id: 飞书应用 ID（用于图片上传功能）
+        feishu_app_secret: 飞书应用 Secret（用于图片上传功能）
         
     Returns:
         包含查询结果的字典（包含data和table两个字段）
@@ -151,9 +155,14 @@ def search_rising_stocks(days: int = 3, market: str = "all",
     # 3. 发送到飞书（如果需要）
     if send_to_feishu:
         try:
-            send_ok = send_latest_analysis(include_table=True)
+            send_ok = send_concept_analysis_chart(
+                webhook_url="https://open.feishu.cn/open-apis/bot/v2/hook/c8278f54-8e18-4edc-97bd-0c0abc3ab17f",
+                temp_dir=str(TEMP_DIR),
+                app_id=feishu_app_id,
+                app_secret=feishu_app_secret
+            )
             if send_ok:
-                logger.info("结果已发送到飞书")
+                logger.info("概念分析图表已发送到飞书")
             else:
                 logger.warning("飞书发送失败")
         except Exception as e:
@@ -177,7 +186,9 @@ def search_concepts(days: int = 5, market: str = "all",
                    include_cy: bool = False,
                    auto_update_cache: bool = True,
                    send_to_feishu: bool = False,
-                   top_n: int = 20) -> Dict:
+                   top_n: int = 20,
+                   feishu_app_id: Optional[str] = None,
+                   feishu_app_secret: Optional[str] = None) -> Dict:
     """
     搜索大盘概念趋势（服务主入口）
     
@@ -194,6 +205,8 @@ def search_concepts(days: int = 5, market: str = "all",
         auto_update_cache: 是否自动更新缓存，默认True
         send_to_feishu: 是否发送到飞书，默认False
         top_n: 显示前N个概念，默认20
+        feishu_app_id: 飞书应用 ID（用于图片上传功能）
+        feishu_app_secret: 飞书应用 Secret（用于图片上传功能）
         
     Returns:
         包含查询结果的字典（包含data和chart两个字段）
@@ -260,9 +273,14 @@ def search_concepts(days: int = 5, market: str = "all",
     # 3. 发送到飞书（如果需要）
     if send_to_feishu:
         try:
-            send_ok = send_latest_analysis(include_table=True)
+            send_ok = send_concept_analysis_chart(
+                webhook_url="https://open.feishu.cn/open-apis/bot/v2/hook/c8278f54-8e18-4edc-97bd-0c0abc3ab17f",
+                temp_dir=str(TEMP_DIR),
+                app_id=feishu_app_id,
+                app_secret=feishu_app_secret
+            )
             if send_ok:
-                logger.info("结果已发送到飞书")
+                logger.info("概念分析图表已发送到飞书")
             else:
                 logger.warning("飞书发送失败")
         except Exception as e:
