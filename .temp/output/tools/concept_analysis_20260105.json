@@ -1,0 +1,69 @@
+{
+  "query_time": "2026-01-05 19:59:46",
+  "total_concepts": 427,
+  "analysis_days": 5,
+  "concepts": [
+    {
+      "concept_name": "空间站概念",
+      "total_avg_change": "+10.13%",
+      "total_up_count": 37,
+      "total_down_count": 23
+    },
+    {
+      "concept_name": "卫星互联网",
+      "total_avg_change": "+8.73%",
+      "total_up_count": 104,
+      "total_down_count": 59
+    },
+    {
+      "concept_name": "人脑工程",
+      "total_avg_change": "+8.14%",
+      "total_up_count": 36,
+      "total_down_count": 33
+    },
+    {
+      "concept_name": "北斗导航",
+      "total_avg_change": "+7.54%",
+      "total_up_count": 129,
+      "total_down_count": 80
+    },
+    {
+      "concept_name": "Sora概念",
+      "total_avg_change": "+7.32%",
+      "total_up_count": 46,
+      "total_down_count": 27
+    },
+    {
+      "concept_name": "Kimi概念",
+      "total_avg_change": "+7.04%",
+      "total_up_count": 18,
+      "total_down_count": 11
+    },
+    {
+      "concept_name": "智谱AI",
+      "total_avg_change": "+6.76%",
+      "total_up_count": 41,
+      "total_down_count": 28
+    },
+    {
+      "concept_name": "VPN",
+      "total_avg_change": "+6.69%",
+      "total_up_count": 31,
+      "total_down_count": 14
+    },
+    {
+      "concept_name": "6G概念",
+      "total_avg_change": "+6.39%",
+      "total_up_count": 61,
+      "total_down_count": 38
+    },
+    {
+      "concept_name": "IPv6",
+      "total_avg_change": "+6.37%",
+      "total_up_count": 27,
+      "total_down_count": 21
+    }
+  ],
+  "json_output_path": "/Users/JDb/Desktop/github/learn_llm/.temp/output/tools/concept_analysis_20260105_5days_all_kcFalse_cyFalse.json",
+  "chart_output_path": "/Users/JDb/Desktop/github/learn_llm/.temp/output/tools/concept_analysis_20260105_5days_all_kcFalse_cyFalse.png"
+}
