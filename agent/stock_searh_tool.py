@@ -38,6 +38,7 @@ from utils.log_util import LogUtil
 from agent.stock_data_updater import update_stock_data
 from agent.stock_rising_calculator import calculate_rising_stocks
 from agent.send_stock_analysis import send_latest_analysis
+from agent.stock_concept_analyzer import analyze_concepts
 
 logger = LogUtil.get_logger(__name__)
 
@@ -168,6 +169,115 @@ def search_rising_stocks(days: int = 3, market: str = "all",
     }
 
 
+def search_concepts(days: int = 5, market: str = "all",
+                   current_date: Optional[str] = None,
+                   save_result: bool = True,
+                   use_cache: bool = True,
+                   include_kc: bool = False,
+                   include_cy: bool = False,
+                   auto_update_cache: bool = True,
+                   send_to_feishu: bool = False,
+                   top_n: int = 20) -> Dict:
+    """
+    搜索大盘概念趋势（服务主入口）
+    
+    串联调用数据更新、计算和发送功能。
+    
+    Args:
+        days: 分析天数，默认5天
+        market: 市场类型 ('all' 全市场, 'sh' 上海, 'sz' 深圳)
+        current_date: 查询日期，格式YYYYMMDD，默认为今天
+        save_result: 是否保存结果到文件（图表png文件）
+        use_cache: 是否使用缓存的查询结果（基于图表png文件）
+        include_kc: 是否包含科创板，默认False
+        include_cy: 是否包含创业板，默认False
+        auto_update_cache: 是否自动更新缓存，默认True
+        send_to_feishu: 是否发送到飞书，默认False
+        top_n: 显示前N个概念，默认20
+        
+    Returns:
+        包含查询结果的字典（包含data和chart两个字段）
+    """
+    if current_date is None:
+        current_date = datetime.now().strftime("%Y%m%d")
+    
+    # 图表文件路径
+    chart_file = TOOLS_OUTPUT_DIR / f"concept_analysis_{current_date}_{days}days_{market}_kc{include_kc}_cy{include_cy}.png"
+    
+    # 检查缓存的图表文件
+    if use_cache and chart_file.exists():
+        chart_content = str(chart_file)
+        if chart_file.exists():
+            try:
+                # 从缓存读取时，重新生成JSON数据（但不保存）
+                result_data = {}
+                from agent.stock_concept_analyzer import analyze_concepts_simple
+                result_json = analyze_concepts_simple(
+                    days=days, market=market,
+                    include_kc=include_kc, include_cy=include_cy,
+                    compress=False
+                )
+                result_data = JsonUtil.loads(result_json) or {}
+                concept_count = len(result_data.get('concepts', []))
+            except Exception:
+                concept_count = 0
+                result_data = {}
+            
+            return {
+                "success": True,
+                "message": f"从缓存读取，找到 {concept_count} 个概念（分析周期{days}天，科创板{'包含' if include_kc else '排除'}，创业板{'包含' if include_cy else '排除'}）",
+                "data": result_data,
+                "chart": chart_content,
+                "chart_path": str(chart_file),
+                "from_cache": True
+            }
+    
+    # 1. 自动更新缓存（如果需要）
+    if auto_update_cache:
+        update_ok = update_stock_data(days=days + 7, market=market, force_update=False)
+        if not update_ok:
+            logger.warning("数据更新失败或不完整，继续使用现有缓存")
+    
+    # 2. 分析概念趋势
+    result_json, chart_content = analyze_concepts(
+        days=days, market=market,
+        include_kc=include_kc, include_cy=include_cy,
+        compress=False, save_chart=save_result, chart_path=chart_file if save_result else None, top_n=top_n
+    )
+    
+    result = JsonUtil.loads(result_json) or {}
+    
+    if not result.get("concepts"):
+        return {
+            "success": True,
+            "message": f"未找到概念数据或缓存数据不足（分析周期{days}天，科创板{'包含' if include_kc else '排除'}，创业板{'包含' if include_cy else '排除'}）",
+            "data": result,
+            "chart": chart_content,
+            "chart_path": None,
+            "from_cache": False
+        }
+    
+    # 3. 发送到飞书（如果需要）
+    if send_to_feishu:
+        try:
+            send_ok = send_latest_analysis(include_table=True)
+            if send_ok:
+                logger.info("结果已发送到飞书")
+            else:
+                logger.warning("飞书发送失败")
+        except Exception as e:
+            logger.error(f"发送到飞书失败: {e}")
+    
+    return {
+        "success": True,
+        "message": f"找到 {len(result.get('concepts', []))} 个概念（分析周期{result.get('analysis_days', days)}天，科创板{'包含' if include_kc else '排除'}，创业板{'包含' if include_cy else '排除'}）",
+        "data": result,
+        "chart": chart_content,
+        "chart_path": str(chart_file) if save_result else None,
+        "from_cache": False
+    }
+
+
 # ==================== LangChain Tool 包装 ====================
 
 def get_langchain_tool():
@@ -175,7 +285,7 @@ def get_langchain_tool():
     获取LangChain工具（使用最新语法）
     
     Returns:
-        LangChain Tool对象
+        LangChain Tool对象列表
     """
     try:
         from langchain_core.tools import tool
@@ -232,7 +342,57 @@ def get_langchain_tool():
                 "data": data
             })
         
-        return search_rising_stocks_tool
+        @tool
+        def search_concepts_tool(
+            days: int = 5,
+            market: str = "all",
+            include_kc: bool = False,
+            include_cy: bool = False
+        ) -> str:
+            """
+            分析大盘概念趋势（基于本地缓存分析，自动更新数据）
+            
+            功能说明：
+            - 自动检查并更新股票数据缓存（本地有数据则跳过远程调用）
+            - 从本地缓存读取股票历史数据，分析概念板块趋势
+            - 自动过滤ST/*ST股票（避免退市风险）
+            - 支持按市场筛选（上交所/深交所/科创板/创业板）
+            - 按累计平均涨跌幅排序，定位大盘主线趋势
+            - 生成可视化图表展示Top概念趋势
+            
+            Args:
+                days: 分析天数，默认5天（最近N个交易日）
+                market: 市场类型筛选
+                    - "all": 全市场（默认）
+                    - "sh": 上海主板（沪市）
+                    - "sz": 深圳主板（深市）
+                include_kc: 是否包含科创板（688xxx），默认False
+                include_cy: 是否包含创业板（300xxx），默认False
+            
+            Returns:
+                JSON格式的概念分析结果（用于模型输入）
+            """
+            logger.info(f"LangChain工具被调用: days={days}, market={market}")
+            result = search_concepts(
+                days=days,
+                market=market,
+                include_kc=include_kc,
+                include_cy=include_cy,
+                auto_update_cache=True
+            )
+            
+            if not result.get("success"):
+                return JsonUtil.dumps({"message": result.get("message", "查询失败")})
+            
+            # 返回JSON数据（压缩格式，减少token）
+            data = result.get("data", {})
+            return JsonUtil.dumps({
+                "success": True,
+                "message": result.get("message", ""),
+                "data": data
+            })
+        
+        return [search_rising_stocks_tool, search_concepts_tool]
     except ImportError:
         logger.error("langchain_core未安装，无法创建LangChain工具")
         return None
@@ -249,10 +409,12 @@ def get_mcp_tools() -> list:
     """
     from agent.stock_data_updater import get_mcp_tool as get_updater_tool
     from agent.stock_rising_calculator import get_mcp_tool as get_calculator_tool
+    from agent.stock_concept_analyzer import get_mcp_tool as get_analyzer_tool
     
     return [
         get_updater_tool(),
-        get_calculator_tool()
+        get_calculator_tool(),
+        get_analyzer_tool()
     ]
 
 
@@ -269,11 +431,14 @@ def handle_mcp_call(tool_name: str, arguments: Dict) -> Dict:
     """
     from agent.stock_data_updater import handle_mcp_call as handle_updater_call
     from agent.stock_rising_calculator import handle_mcp_call as handle_calculator_call
+    from agent.stock_concept_analyzer import handle_mcp_call as handle_analyzer_call
     
     if tool_name == "update_stock_data":
         return handle_updater_call(arguments)
     elif tool_name == "analyze_rising_stocks":
         return handle_calculator_call(arguments)
+    elif tool_name == "analyze_concepts":
+        return handle_analyzer_call(arguments)
     else:
         return {
             "content": [

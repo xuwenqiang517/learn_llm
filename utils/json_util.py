@@ -49,7 +49,12 @@ class JsonUtil:
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=indent)
             return True
-        except Exception:
+        except Exception as e:
+            import traceback
+            print(f"❌ JSON保存失败: {e}")
+            print(f"❌ 文件路径: {file_path}")
+            print(f"❌ 数据类型: {type(data)}")
+            print(f"❌ 错误详情:\n{traceback.format_exc()}")
             return False
     
     @staticmethod
