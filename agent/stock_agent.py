@@ -1,48 +1,178 @@
 import json
 import sys
+import os
 import logging
 from pathlib import Path
+from datetime import datetime
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.tools import tool
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
-from langchain_core.runnables import RunnableSequence
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
-from agent.common import create_dashscope_chat
 from agent.stock_searh_tool import search_rising_stocks, generate_table_from_results
 from agent.send_stock_analysis import send_latest_analysis
+from agent.common import create_ollama_chat, create_dashscope_chat
+
+
+MODEL_CONFIG = {
+    "remote": {
+        "model": "qwen-plus",
+        "temperature": 0.1,
+        "params": "未知参数量"
+    },
+    "local": {
+        "model": "qwen3:32b",
+        "temperature": 0.3,
+        "params": "32B"
+    }
+}
+
+
+class StockCallbackHandler(BaseCallbackHandler):
+    """股票分析回调处理器"""
+
+    def __init__(self, debug: bool = False):
+        super().__init__()
+        self.debug = debug
+        self.iteration = 0
+        self.last_tool_result: Optional[str] = None
+        self.tool_call_args: Optional[dict] = None
+
+    def on_chat_model_start(self, serialized, inputs, **kwargs) -> None:
+        self.iteration += 1
+        if self.debug:
+            logger.info(f"\n{'=' * 60}")
+            logger.info(f"迭代 {self.iteration}")
+            logger.info(f"{'=' * 60}")
+
+    def on_llm_end(self, response, **kwargs) -> None:
+        if hasattr(response, 'generations') and response.generations:
+            generation = response.generations[0][0] if response.generations[0] else None
+            if generation:
+                content = generation.text or ""
+                logger.info(f"模型响应: 内容长度 {len(content)} 字符")
+                if self.debug and len(content) > 200:
+                    logger.info(f"内容预览: {content[:200]}...")
+                
+                if not content or len(content.strip()) == 0:
+                    logger.info("无内容返回，可能需要调用工具")
+                else:
+                    logger.info("返回最终结果")
+                    self._save_and_send_result(content)
+
+    def on_tool_start(self, serialized, input_str, **kwargs) -> None:
+        if self.debug:
+            function_name = serialized.get("name", "unknown")
+            try:
+                function_args = json.loads(input_str)
+                logger.info(f"执行工具: {function_name}")
+                logger.info(f"参数: {function_args}")
+            except json.JSONDecodeError:
+                logger.info(f"执行工具: {function_name}")
+
+    def on_tool_end(self, output, **kwargs) -> None:
+        if self.debug:
+            logger.info(f"工具返回: {len(str(output))} 字符")
+
+    def _save_and_send_result(self, result_content: str, config: dict = None) -> None:
+        output_dir = Path("/Users/JDb/Desktop/github/learn_llm/.temp")
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = output_dir / f"stock_analysis_{timestamp}.md"
+        output_file.write_text(result_content, encoding="utf-8")
+        logger.info(f"分析结果已保存到: {output_file}")
+
+        logger.info("分析完成，自动发送结果到飞书...")
+        send_latest_analysis()
 
 
 @tool
 def search_rising_stocks_tool(days: int = 3, market: str = "all", min_increase: float = 10.0, include_kc: bool = False, include_cy: bool = False) -> str:
     """
-    搜索连续N天上涨的A股股票
+    搜索连续N天上涨的A股股票（基于本地缓存分析，完全离线运行）
+
+    功能说明：
+    - 从本地缓存读取股票历史数据，分析连续上涨走势
+    - 自动过滤ST/*ST股票（避免退市风险）
+    - 支持按市场筛选（上交所/深交所/科创板/创业板）
+    - 按连涨天数和累计涨幅综合排序
 
     Args:
-        days: 连续上涨天数，默认3天
-        market: 市场类型 ('all' 全市场, 'sh' 上海, 'sz' 深圳)
-        min_increase: 最小累计涨幅阈值，默认5%
-        include_kc: 是否包含科创板，默认False
-        include_cy: 是否包含创业板，默认False
+        days: 连续上涨天数，默认3天（从最近一天往前计算）
+        market: 市场类型筛选
+            - "all": 全市场（默认）
+            - "sh": 上海主板（沪市）
+            - "sz": 深圳主板（深市）
+        min_increase: 最小累计涨幅阈值，默认10.0%（连涨期间的累计涨幅）
+        include_kc: 是否包含科创板（688xxx），默认False
+        include_cy: 是否包含创业板（300xxx），默认False
 
     Returns:
         JSON格式的股票搜索结果（压缩模式，减少token消耗）
+
+        **字段说明（压缩格式）：**
+        - **c**: 股票代码（code）
+        - **n**: 股票名称（name）
+        - **i**: 所属行业（industry，前4字符）
+        - **con**: 概念板块列表（concepts，前8字符，最多3个）
+        - **p**: 最新收盘价（price，保留2位小数）
+        - **inc3**: 最近3天累计涨幅（3日涨幅，格式：+XX.X%）
+        - **inc_r**: 连涨期间累计涨幅（连涨涨幅，格式：+XX.X%）
+        - **r**: 实际连涨天数（rising_days）
+        - **d**: 最近3天每日涨跌数据（daily_data，逗号分隔，格式：MM-DD:+X.X%）
+
+        **完整格式字段说明：**
+        - code: 股票代码
+        - name: 股票名称
+        - industry: 所属行业
+        - concepts: 所属概念板块列表
+        - rising_days: 实际连涨天数
+        - rising_total_increase: 连涨期间累计涨幅（从连涨第1天到最后一天的涨幅总和）
+        - total_increase: 最近3天累计涨幅（包含非连涨日的总涨幅）
+        - daily_data: 最近3天每日涨跌数据
+        - last_close: 最新收盘价
     """
     logger.info(f"工具被调用: days={days}, market={market}, min_increase={min_increase}, include_kc={include_kc}, include_cy={include_cy}")
-    df = search_rising_stocks(days=days, market=market, min_increase=min_increase, include_kc=include_kc, include_cy=include_cy)
-    logger.info(f"工具返回结果: {len(df)} 只股票")
-
-    from agent.stock_searh_tool import format_stock_result
-    return format_stock_result(df, days, compress=True)
+    result = search_rising_stocks(days=days, market=market, min_increase=min_increase, include_kc=include_kc, include_cy=include_cy)
+    logger.info(f"工具返回结果: {result.get('message', 'N/A')}")
+    
+    if not result.get("success"):
+        return json.dumps({"message": result.get("message", "查询失败")}, ensure_ascii=False)
+    
+    data = result.get("data", {})
+    table_content = result.get("table", "")
+    
+    logger.info(f"表格内容类型: {type(table_content)}, 长度: {len(table_content)}")
+    
+    if table_content:
+        output_dir = Path("/Users/JDb/Desktop/github/learn_llm/.temp")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        table_file = output_dir / f"stock_table_{timestamp}.md"
+        table_file.write_text(table_content, encoding="utf-8")
+        logger.info(f"表格数据已保存到: {table_file}")
+    else:
+        logger.warning("表格内容为空，未保存表格文件")
+    
+    return json.dumps({"success": True, "message": result.get("message", ""), "data": data}, ensure_ascii=False, indent=2)
 
 
 tools = [search_rising_stocks_tool]
 
 SYSTEM_PROMPT = """你是专业的A股股票分析师，精通通过数据分析发现投资机会。
+
+## 工作流程
+1. 当用户询问股票分析时，首先调用 search_rising_stocks_tool 工具获取股票数据
+2. 工具会返回JSON格式的股票数据，包含股票代码、名称、行业、概念、涨幅等信息
+3. 收到工具返回的数据后，**立即停止调用工具**，基于数据生成分析报告
+4. 不要重复调用工具，直接基于已获取的数据进行分析
 
 ## 分析任务
 基于搜索结果，深入分析连续上涨股票的投资价值。
@@ -77,279 +207,105 @@ SYSTEM_PROMPT = """你是专业的A股股票分析师，精通通过数据分析
 用简洁专业的语言给出分析结论，数据支撑论点。"""
 
 
-def run_stock_analysis(user_query: str, debug: bool = False) -> str:
+def run_stock_analysis(user_query: str, debug: bool = False, model_type: str = "remote") -> str:
     """
-    运行股票分析Agent（使用DashScope远程模型 + OpenAI兼容API）
+    运行股票分析Agent（使用工具调用模式）
 
     Args:
         user_query: 用户查询
         debug: 是否开启调试模式
-
-    Returns:
-        Agent响应结果
+        model_type: 模型类型，可选 "remote"（远程DashScope）或 "local"（本地Ollama）
     """
-    import os
-    from openai import OpenAI
-
     logger.info(f"开始处理用户查询: {user_query}")
+    logger.info(f"使用模型类型: {model_type}")
 
-    client = OpenAI(
-        api_key=os.getenv("DASHSCOPE_API_KEY"),
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-    )
-    logger.info("创建 DashScope Client 完成")
+    callback_handler = StockCallbackHandler(debug=debug)
 
-    messages = [{"role": "user", "content": user_query}]
-    max_iterations = 5
-    iteration = 0
-    last_tool_result = None
-    tool_call_args = None
+    config = MODEL_CONFIG.get(model_type, MODEL_CONFIG["remote"])
 
-    while iteration < max_iterations:
-        iteration += 1
-        if debug:
-            logger.info(f"\n{'='*60}")
-            logger.info(f"迭代 {iteration}/{max_iterations}")
-            logger.info(f"{'='*60}")
+    if model_type == "remote":
+        llm = create_dashscope_chat(
+            model=config["model"],
+            temperature=config["temperature"]
+        )
+        logger.info(f"创建远程模型完成: {config['model']}")
+    else:
+        llm = create_ollama_chat(
+            model=config["model"],
+            base_url="http://localhost:11434",
+            temperature=config["temperature"]
+        )
+        logger.info(f"创建本地模型完成: {config['model']}")
 
-        response = client.chat.completions.create(
-                    model="qwen-plus",
-                    messages=messages,
-                    temperature=0.1,
-                    tools=[{
-                        "type": "function",
-                        "function": {
-                            "name": "search_rising_stocks_tool",
-                            "description": "搜索连续N天上涨的A股股票",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "days": {
-                                        "type": "integer",
-                                        "description": "连续上涨天数",
-                                        "default": 3
-                                    },
-                                    "market": {
-                                        "type": "string",
-                                        "description": "市场类型",
-                                        "enum": ["all", "sh", "sz"],
-                                        "default": "all"
-                                    },
-                                    "min_increase": {
-                                        "type": "number",
-                                        "description": "最小累计涨幅阈值（%）",
-                                        "default": 5.0
-                                    },
-                                    "include_kc": {
-                                        "type": "boolean",
-                                        "description": "是否包含科创板",
-                                        "default": False
-                                    },
-                                    "include_cy": {
-                                        "type": "boolean",
-                                        "description": "是否包含创业板",
-                                        "default": False
-                                    }
-                                },
-                                "required": ["days", "market", "min_increase"]
-                            }
-                        }
-                    }]
-                )
+    return _run_with_tools(llm, config, user_query, callback_handler)
 
-        response_message = response.choices[0].message
-        logger.info(f"模型响应: role={response_message.role}")
 
-        if response_message.content:
-            content = response_message.content.strip()
-            if debug:
-                logger.info(f"内容长度: {len(content)} 字符")
-                logger.info(f"内容预览: {content[:200]}...")
+def _run_with_tools(llm, config, user_query, callback_handler) -> str:
+    """使用工具调用的模式运行（适用于支持 tools 的模型）"""
+    logger.info("使用工具调用模式运行...")
 
-        tool_calls = response_message.tool_calls
-        if not tool_calls:
-            logger.info("无需调用工具，返回最终结果")
+    messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_query)]
+    max_iterations = 2
+    tool_success = False
 
+    llm_with_tools = llm.bind_tools(tools)
+
+    for iteration in range(max_iterations):
+        response = llm_with_tools.invoke(messages, config={"callbacks": [callback_handler]})
+
+        response_message = response
+
+        logger.info(f"响应类型: {type(response_message)}")
+        logger.info(f"响应内容: {response_message.content if hasattr(response_message, 'content') else 'N/A'}")
+        logger.info(f"响应 tool_calls: {response_message.tool_calls if hasattr(response_message, 'tool_calls') else 'N/A'}")
+
+        if not hasattr(response_message, 'tool_calls') or not response_message.tool_calls:
+            if not tool_success:
+                error_msg = "工具调用失败，无法获取股票数据，分析终止"
+                logger.error(error_msg)
+                callback_handler._save_and_send_result(error_msg, config)
+                return error_msg
             result_content = response_message.content or ""
-            output_dir = Path("/Users/JDb/Desktop/github/learn_llm/.temp")
-            output_dir.mkdir(parents=True, exist_ok=True)
+            model_info = f"\n\n---\n**分析模型**: {config['model']} ({config['params']})\n**生成时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            final_result = result_content + model_info
+            callback_handler._save_and_send_result(final_result, config)
+            return final_result
 
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_file = output_dir / f"stock_analysis_{timestamp}.md"
-            output_file.write_text(result_content, encoding="utf-8")
-            logger.info(f"分析结果已保存到: {output_file}")
-
-            if last_tool_result and tool_call_args:
-                try:
-                    tool_result_data = json.loads(last_tool_result)
-                    table_content = generate_table_from_results(tool_result_data)
-                    table_file = output_dir / f"stock_table_{timestamp}.md"
-                    table_file.write_text(table_content, encoding="utf-8")
-                    logger.info(f"表格数据已保存到: {table_file}")
-                except json.JSONDecodeError as e:
-                    logger.warning(f"解析工具结果失败，跳过表格生成: {e}")
-                except Exception as e:
-                    logger.warning(f"生成表格失败: {e}")
-
-            try:
-                logger.info("分析完成，自动发送结果到飞书...")
-                send_success = send_latest_analysis()
-                if send_success:
-                    logger.info("✅ 飞书消息发送成功")
-                else:
-                    logger.warning("⚠️ 飞书消息发送失败")
-            except Exception as e:
-                logger.error(f"发送飞书消息异常: {e}")
-
-            return result_content
-
-        for call in tool_calls:
-            call_id = call.id
-            function_name = call.function.name
-            function_args = json.loads(call.function.arguments)
-
-            if debug:
-                logger.info(f"执行工具: {function_name}")
-                logger.info(f"参数: {function_args}")
+        for call in response_message.tool_calls:
+            call_id = call["id"]
+            function_name = call["name"]
+            function_args = call["args"]
 
             tool_func = next((t for t in tools if t.name == function_name), None)
             if tool_func:
                 try:
                     tool_result = tool_func.invoke(function_args)
-                    if debug:
-                        logger.info(f"工具返回: {len(tool_result)} 字符")
-                    last_tool_result = tool_result
-                    tool_call_args = function_args
+                    tool_success = True
+                    callback_handler.last_tool_result = tool_result
+                    callback_handler.tool_call_args = function_args
                 except Exception as e:
                     tool_result = f"工具执行错误: {str(e)}"
                     logger.error(f"工具执行错误: {e}")
-                    last_tool_result = None
+                    callback_handler.last_tool_result = None
+                    error_msg = f"工具执行失败: {str(e)}，分析终止"
+                    callback_handler._save_and_send_result(error_msg, config)
+                    return error_msg
 
-                messages.append({
-                    "role": "assistant",
-                    "content": "",
-                    "tool_calls": [
-                        {
-                            "id": call_id,
-                            "type": "function",
-                            "function": {
-                                "name": function_name,
-                                "arguments": call.function.arguments
-                            }
-                        }
-                    ]
-                })
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": call_id,
-                    "content": tool_result
-                })
+                messages.append(AIMessage(
+                    content="",
+                    tool_calls=[call]
+                ))
+                messages.append(ToolMessage(
+                    content=tool_result,
+                    tool_call_id=call_id,
+                    name=function_name
+                ))
             else:
                 logger.warning(f"未找到工具: {function_name}")
-                messages.append({
-                    "role": "assistant",
-                    "content": f"错误：未找到工具 {function_name}"
-                })
+                messages.append(AIMessage(content=f"错误：未找到工具 {function_name}"))
 
     logger.warning("达到最大迭代次数")
     return "Agent执行超时"
-
-
-def _run_normal(agent, inputs: dict) -> str:
-    """正常运行模式"""
-    logger.info("使用正常模式运行...")
-    
-    final_output = ""
-    step = 0
-
-    for chunk in agent.stream(inputs, stream_mode="debug"):
-        step += 1
-        chunk_type = chunk.get("type", "unknown")
-        logger.debug(f"Step {step} - Chunk Type: {chunk_type}")
-
-        if chunk_type == "task_result":
-            payload = chunk.get("payload", {})
-            messages = payload.get("result", {}).get("messages", [])
-            
-            for msg in messages:
-                if isinstance(msg, AIMessage):
-                    if msg.tool_calls:
-                        logger.debug(f"  工具调用: {len(msg.tool_calls)} 个")
-                    else:
-                        logger.debug(f"  最终响应: {msg.content[:100]}...")
-                        final_output = msg.content
-
-        elif chunk_type == "task":
-            logger.debug(f"任务状态: {chunk.get('status')}")
-
-    logger.info(f"运行完成，最终输出长度: {len(final_output)}")
-    return final_output if final_output else "未获取到有效响应"
-
-
-def _run_with_debug_stream(agent, inputs: dict) -> str:
-    """调试模式 - 使用 debug stream 模式获取详细信息"""
-    logger.info("使用 debug 模式运行...")
-
-    final_output = ""
-    step = 0
-
-    for chunk in agent.stream(inputs, stream_mode="debug"):
-        step += 1
-        chunk_type = chunk.get("type", "unknown")
-        logger.info(f"\n{'='*60}")
-        logger.info(f"Step {step} - Chunk Type: {chunk_type}")
-        logger.info(f"{'='*60}")
-
-        if chunk_type == "task_result":
-            payload = chunk.get("payload", {})
-            name = payload.get("name", "unknown")
-            error = payload.get("error")
-            result = payload.get("result", {})
-
-            logger.info(f"节点名称: {name}")
-            if error:
-                logger.error(f"错误: {error}")
-
-            messages = result.get("messages", [])
-            for msg in messages:
-                msg_type = type(msg).__name__
-                logger.info(f"  消息类型: {msg_type}")
-
-                if isinstance(msg, AIMessage):
-                    logger.info(f"  内容长度: {len(msg.content)} 字符")
-                    logger.info(f"  工具调用: {len(msg.tool_calls)} 个")
-                    if msg.tool_calls:
-                        for tc in msg.tool_calls:
-                            logger.info(f"    - {tc.get('name', 'unknown')}")
-                    else:
-                        # 这是最终响应
-                        final_output = msg.content
-                        logger.info(f"  最终响应预览: {msg.content[:200]}...")
-
-                elif isinstance(msg, ToolMessage):
-                    content_len = len(msg.content)
-                    logger.info(f"  内容长度: {content_len} 字符")
-                    logger.info(f"  工具名称: {msg.name}")
-                    if content_len > 200:
-                        logger.info(f"  内容预览: {msg.content[:200]}...")
-                    else:
-                        logger.info(f"  内容: {msg.content}")
-
-        elif chunk_type == "task":
-            logger.info(f"任务类型: {chunk.get('status')}")
-
-        elif chunk_type == "input":
-            logger.info(f"输入: {chunk.get('input')}")
-
-        else:
-            logger.info(f"完整内容: {json.dumps(chunk, ensure_ascii=False, indent=2)[:500]}")
-
-    logger.info(f"\n{'='*60}")
-    logger.info(f"运行完成，最终输出长度: {len(final_output)}")
-    logger.info(f"{'='*60}\n")
-
-    return final_output if final_output else "未获取到有效响应"
 
 
 def main():
@@ -362,14 +318,12 @@ def main():
     print(f"\n用户查询: {user_query}")
     print("-" * 70)
 
-    # 使用调试模式运行
-    result = run_stock_analysis(user_query, debug=True)
+    result = run_stock_analysis(user_query, debug=True, model_type="remote")
     print("\n" + "=" * 70)
-    print("最终结果:")
+    print("远程模型结果:")
     print("=" * 70)
     print(result)
     print("-" * 70)
-
 
 if __name__ == "__main__":
     main()

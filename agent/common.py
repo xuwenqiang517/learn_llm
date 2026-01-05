@@ -27,7 +27,7 @@ from langchain_ollama import ChatOllama
 
 
 def create_ollama_chat(
-    model: str = "deepseek-r1:32b",
+    model: str = "qwen3:32b",
     base_url: str = "http://localhost:11434",
     temperature: float = 0.7,
     max_tokens: int | None = None,

@@ -346,7 +346,7 @@ def analyze_stock_from_cache(code: str, name: str, dates: list, industry_map: di
     }
 
 
-def get_rising_stocks(days: int = 3, market: str = "all", min_increase: float = 5.0, include_kc: bool = False, include_cy: bool = False) -> pd.DataFrame:
+def get_rising_stocks(days: int = 3, market: str = "all", min_increase: float = 10.0, include_kc: bool = False, include_cy: bool = False) -> pd.DataFrame:
     """
     筛选连续 N 天上涨的股票（完全基于本地缓存分析）
     
@@ -438,6 +438,7 @@ def format_stock_result(df: pd.DataFrame, rising_days: int = 3, save_path: Optio
         last_3_days_increase = sum(daily_increases[-3:]) if len(daily_increases) >= 3 else sum(daily_increases)
 
         if compress:
+            rising_inc = row.get('total_increase', 0)
             daily_data = []
             for i in range(3):
                 if i < len(daily_increases):
@@ -454,7 +455,8 @@ def format_stock_result(df: pd.DataFrame, rising_days: int = 3, save_path: Optio
                 "i": row['industry'][:4] if row['industry'] else "未知",
                 "con": [c[:8] for c in filter_concepts(row.get('concepts', []))][:3],
                 "p": round(row['last_close'], 2),
-                "t": f"{last_3_days_increase:+.1f}%",
+                "inc3": f"{last_3_days_increase:+.1f}%",
+                "inc_r": f"{rising_inc:+.1f}%",
                 "r": actual_days,
                 "d": ", ".join(daily_data)
             })
@@ -498,7 +500,7 @@ def format_stock_result(df: pd.DataFrame, rising_days: int = 3, save_path: Optio
     }
 
     if compress:
-        result["_note"] = "压缩模式: c=code, n=name, i=industry, p=price, t=total, r=rising_days, d=daily"
+        result["_note"] = "压缩模式: c=code, n=name, i=industry, p=price, inc3=3日涨幅, inc_r=连涨涨幅, r=rising_days, d=daily"
 
     result_json = json.dumps(result, ensure_ascii=False, indent=2 if not compress else None)
 
@@ -549,9 +551,13 @@ def generate_table_from_results(result: dict, save_path: Optional[Path] = None) 
     lines = []
     lines.append(f"# 股票数据汇总 ({total_count}只)")
     lines.append(f"\n**查询时间**: {query_time}\n")
-    lines.append("| 代码 | 名称 | 连涨 | 连涨累计涨幅 | 最近3天累计涨幅 | " + " | ".join([f"{h}涨幅" for h in date_headers]) + " | 行业 | 核心概念 |")
-    sep_count = 5 + len(date_headers) + 2
-    lines.append("|" + "|".join(["------"] * sep_count) + "|")
+    
+    header_cols = ["代码", "名称", "连涨", "连涨累计涨幅", "最近3天累计涨幅"]
+    header_cols.extend([f"{h}涨幅" for h in date_headers])
+    header_cols.extend(["行业", "核心概念"])
+    
+    lines.append("| " + " | ".join(header_cols) + " |")
+    lines.append("|" + "|".join(["------"] * len(header_cols)) + "|")
 
     stocks_sorted = sorted(stocks, key=lambda x: (x.get('rising_days', 0), float(x.get('total_increase', '0%').replace('%', '').replace('+', ''))), reverse=True)
 
@@ -750,7 +756,19 @@ def search_rising_stocks(days: int = 3, market: str = "all", current_date: Optio
 
 def main():
     """主函数 - CLI入口"""
-    search_rising_stocks(days=3, market="all", min_increase=10.0,use_cache=False)
+    result = search_rising_stocks(days=3, market="all", min_increase=10.0, use_cache=False)
+    
+    if result.get("success") and result.get("table"):
+        table_content = result.get("table")
+        output_dir = Path("/Users/JDb/Desktop/github/learn_llm/.temp")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        table_file = output_dir / f"stock_table_cli_{timestamp}.md"
+        table_file.write_text(table_content, encoding="utf-8")
+        print(f"表格数据已保存到: {table_file}")
+        print(f"查询结果: {result.get('message', 'N/A')}")
+    else:
+        print(f"查询失败或无表格数据: {result.get('message', 'N/A')}")
     
 
 

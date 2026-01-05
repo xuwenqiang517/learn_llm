@@ -163,7 +163,41 @@ def format_analysis_for_feishu(file_path: Path) -> tuple[str, str]:
     title = f"📈 股票分析报告 - {today}"
 
     header = f"## {title}\n\n"
-    footer = f"\n\n---\n*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*"
+    
+    # 从文件内容中提取模型版本信息，并从内容中移除
+    model_info = ""
+    lines = content.split('\n')
+    content_lines = []
+    skip_next = False
+    
+    for i, line in enumerate(lines):
+        if skip_next:
+            skip_next = False
+            continue
+        
+        # 检测到分隔线且下一行包含模型信息
+        if line.strip() == '---' and i + 1 < len(lines):
+            next_line = lines[i + 1]
+            if '分析模型' in next_line or '生成时间' in next_line:
+                # 提取模型信息
+                model_info += line + '\n'
+                skip_next = True
+                # 继续提取后续的模型信息行
+                for j in range(i + 1, len(lines)):
+                    if j < len(lines) and ('分析模型' in lines[j] or '生成时间' in lines[j]):
+                        model_info += lines[j] + '\n'
+                    else:
+                        break
+                continue
+        
+        content_lines.append(line)
+    
+    content = '\n'.join(content_lines)
+    
+    if model_info:
+        footer = f"\n\n{model_info}"
+    else:
+        footer = f"\n\n---\n*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*"
 
     formatted_content = header + content + footer
 
@@ -191,39 +225,39 @@ def send_latest_analysis(
     Returns:
         是否发送成功
     """
-    logger.info("开始发送股票分析结果到飞书...")
+    try:
+        logger.info("开始发送股票分析结果到飞书...")
 
-    latest_file = get_latest_analysis_file(temp_dir)
-    if not latest_file:
-        return False
+        latest_file = get_latest_analysis_file(temp_dir)
+        if not latest_file:
+            logger.error("未找到分析文件")
+            return False
 
-    title, content = format_analysis_for_feishu(latest_file)
+        title, content = format_analysis_for_feishu(latest_file)
 
-    bot = FeishuBot(webhook_url)
+        bot = FeishuBot(webhook_url)
 
-    success = bot.send_markdown(title, content)
+        if not bot.send_markdown(title, content):
+            logger.error("分析文件发送失败")
+            return False
 
-    if success:
         logger.info(f"已发送分析文件: {latest_file.name}")
-    else:
-        logger.error("分析文件发送失败")
-        return False
 
-    if include_table:
-        table_file = get_latest_table_file(temp_dir)
-        if table_file:
-            logger.info(f"发送表格文件: {table_file.name}")
-            table_content = table_file.read_text(encoding="utf-8")
-            table_title = f"📊 股票数据表格 - {datetime.now().strftime('%Y年%m月%d日')}"
-            table_success = bot.send_markdown(table_title, table_content)
-            if table_success:
+        if include_table:
+            table_file = get_latest_table_file(temp_dir)
+            if table_file:
+                logger.info(f"发送表格文件: {table_file.name}")
+                table_content = table_file.read_text(encoding="utf-8")
+                table_title = f"📊 股票数据表格 - {datetime.now().strftime('%Y年%m月%d日')}"
+                bot.send_markdown(table_title, table_content)
                 logger.info("表格发送成功")
             else:
-                logger.warning("表格发送失败，但分析已发送成功")
-        else:
-            logger.warning("未找到表格文件，仅发送分析内容")
+                logger.warning("未找到表格文件，仅发送分析内容")
 
-    return True
+        return True
+    except Exception as e:
+        logger.error(f"发送飞书消息异常: {e}")
+        return False
 
 
 def send_all_results(
