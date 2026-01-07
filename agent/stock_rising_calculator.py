@@ -399,6 +399,29 @@ def generate_table_from_results(result: Dict, save_path: Optional[Path] = None) 
 
 # ==================== 主入口函数 ====================
 
+def _check_cache_valid(days: int, market: str, min_increase: float,
+                       include_kc: bool, include_cy: bool) -> Optional[Path]:
+    """
+    检查缓存是否有效
+    
+    Args:
+        days: 连续上涨天数
+        market: 市场类型
+        min_increase: 最小累计涨幅阈值
+        include_kc: 是否包含科创板
+        include_cy: 是否包含创业板
+        
+    Returns:
+        缓存文件路径，如果缓存无效则返回None
+    """
+    current_date = datetime.now().strftime("%Y%m%d")
+    table_file = TOOLS_OUTPUT_DIR / f"rising_stocks_{current_date}_{days}days_{market}_{min_increase}pct_kc{include_kc}_cy{include_cy}.md"
+    
+    if table_file.exists():
+        return table_file
+    return None
+
+
 def calculate_rising_stocks(days: int = 3, market: str = "all", 
                            min_increase: float = 10.0, 
                            include_kc: bool = False, 
@@ -408,6 +431,11 @@ def calculate_rising_stocks(days: int = 3, market: str = "all",
                            table_path: Optional[Path] = None) -> Tuple[str, str]:
     """
     计算连续N天上涨的股票（主入口函数）
+    
+    内置数据更新和缓存逻辑：
+    - 自动检查缓存有效性
+    - 自动更新数据（如果需要）
+    - 自动保存结果
     
     Args:
         days: 连续上涨天数，默认3天
@@ -423,6 +451,26 @@ def calculate_rising_stocks(days: int = 3, market: str = "all",
         (JSON格式的字符串结果, Markdown表格字符串)
     """
     try:
+        current_date = datetime.now().strftime("%Y%m%d")
+        
+        if table_path is None and save_table:
+            table_path = TOOLS_OUTPUT_DIR / f"rising_stocks_{current_date}_{days}days_{market}_{min_increase}pct_kc{include_kc}_cy{include_cy}.md"
+        
+        cache_file = _check_cache_valid(days, market, min_increase, include_kc, include_cy)
+        
+        if cache_file:
+            table_content = FileUtil.read_text(cache_file)
+            if table_content:
+                result_json = analyze_rising_stocks(
+                    days=days, market=market, min_increase=min_increase,
+                    include_kc=include_kc, include_cy=include_cy,
+                    compress=compress
+                )
+                result_dict = JsonUtil.loads(result_json) or {}
+                result_dict["from_cache"] = True
+                result_dict["table_output_path"] = str(cache_file)
+                return JsonUtil.dumps(result_dict), table_content
+        
         trading_days = _get_trading_days(days + 12)
         
         logger.info("开始分析股票数据...")
@@ -430,11 +478,11 @@ def calculate_rising_stocks(days: int = 3, market: str = "all",
         # 加载基础数据
         stock_list_data = JsonUtil.load(STOCK_LIST_FILE)
         if not stock_list_data:
-            return JsonUtil.dumps({"message": "股票列表数据不存在，请先更新数据"})
+            return JsonUtil.dumps({"message": "股票列表数据不存在，请先更新数据"}), "数据不存在"
         
         stock_list = pd.DataFrame(stock_list_data)
         if stock_list.empty:
-            return JsonUtil.dumps({"message": "股票列表为空"})
+            return JsonUtil.dumps({"message": "股票列表为空"}), "股票列表为空"
         
         # 市场筛选
         if market == "sh":
@@ -482,12 +530,11 @@ def calculate_rising_stocks(days: int = 3, market: str = "all",
         
         # 生成表格
         if result_dict.get("stocks"):
-            if table_path is None and save_table:
-                table_path = TOOLS_OUTPUT_DIR / f"rising_stocks_{datetime.now().strftime('%Y%m%d')}_{days}days_{market}_{min_increase}pct_kc{include_kc}_cy{include_cy}.md"
             table_content = generate_table_from_results(result_dict, save_path=table_path if save_table else None)
         else:
             table_content = "未找到符合条件的股票"
         
+        result_dict["from_cache"] = False
         return result_json, table_content
         
     except Exception as e:

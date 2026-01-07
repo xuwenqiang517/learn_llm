@@ -20,16 +20,14 @@
    - 对应下跌股票数量
    支持tool/mcp/main 用于后续agent调用和直接调用
 5. 可视化输出 保存到当前项目的.temp/output/tools/目录
-   - 生成PNG格式图表，包含3个子图：
-     * 子图1：概念累计平均涨跌幅（Top N，横向柱状图，红绿配色）
-     * 子图2：概念涨跌统计（上涨/下跌次数对比）
-     * 子图3：股票详情表格 按5天累计涨幅排序（每个概念显示最多20只股票）
+   - 生成Markdown格式表格，包含两个部分：
+     * 概念汇总表：显示Top N概念的排名、名称、累计涨跌幅、股票数量、涨跌次数
+     * 股票详情表：每个概念显示最多20只股票的详细信息
    - 表格特性：
      * 使用实际日期（MM-DD格式）作为表头
      * 合并股票名称和代码（如：贵州茅台(600519)）
-     * 概念名称与日期在同一行，蓝色背景作为表头
-     * 添加五日累计涨跌幅列（放在最前面）
-     * 交替行颜色提高可读性
+     * 添加五日累计涨跌幅列
+     * 按概念分组展示，每个概念有独立的小标题
 
 """
 
@@ -41,8 +39,6 @@ from typing import Optional, Dict, List, Any, Tuple
 from collections import defaultdict
 
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
 from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -52,10 +48,6 @@ from utils.file_util import FileUtil
 from utils.log_util import LogUtil
 
 logger = LogUtil.get_logger(__name__)
-
-# 设置中文字体
-plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']
-plt.rcParams['axes.unicode_minus'] = False
 
 # ==================== 目录结构定义 ====================
 BASE_DIR = Path(__file__).parent.parent
@@ -490,11 +482,11 @@ def _format_concept_result(concept_results: List[Dict], dates: List[str],
     return JsonUtil.dumps(result, indent=None if compress else 2)
 
 
-# ==================== 图表生成 ====================
+# ==================== 文本表格生成 ====================
 
-def generate_chart_from_results(result: Dict, save_path: Optional[Path] = None, top_n: int = 20) -> str:
+def generate_table_from_concept_results(result: Dict, save_path: Optional[Path] = None, top_n: int = 20) -> str:
     """
-    从搜索结果生成图表
+    从概念分析结果生成Markdown表格
     
     Args:
         result: analyze_concepts 返回的结果字典
@@ -502,11 +494,10 @@ def generate_chart_from_results(result: Dict, save_path: Optional[Path] = None, 
         top_n: 显示前N个概念，默认20
         
     Returns:
-        图片文件路径字符串
+        Markdown格式的表格字符串
     """
     concepts = result.get('concepts', [])
     if not concepts:
-        logger.warning("未找到概念数据")
         return "未找到概念数据"
     
     total_concepts = result.get('total_concepts', len(concepts))
@@ -520,71 +511,33 @@ def generate_chart_from_results(result: Dict, save_path: Optional[Path] = None, 
         reverse=True
     )[:top_n]
     
-    # 准备数据
-    concept_names = [c.get('concept_name', '')[:10] for c in concepts_sorted]
-    total_avg_changes = [float(c.get('total_avg_change', '0%').replace('%', '').replace('+', '')) for c in concepts_sorted]
-    stock_counts = [c.get('stock_count', 0) for c in concepts_sorted]
-    up_counts = [c.get('total_up_count', 0) for c in concepts_sorted]
-    down_counts = [c.get('total_down_count', 0) for c in concepts_sorted]
+    lines = []
+    lines.append(f"# 大盘概念趋势分析 (Top {top_n})")
+    lines.append(f"\n**查询时间**: {query_time} | **分析周期**: 最近{analysis_days}个交易日 | **总概念数**: {total_concepts}\n")
     
-    # 创建更大的图表以容纳股票详情
-    fig = plt.figure(figsize=(20, 24))
-    gs = fig.add_gridspec(3, 1, height_ratios=[1, 1, 3], hspace=0.3)
+    # 概念汇总表
+    lines.append("## 概念汇总表\n")
+    header_cols = ["排名", "概念名称", "五日累计涨跌幅", "股票数量", "上涨次数", "下跌次数"]
+    lines.append("| " + " | ".join(header_cols) + " |")
+    lines.append("|" + "|".join(["------"] * len(header_cols)) + "|")
     
-    fig.suptitle(f'大盘概念趋势分析 (Top {top_n})\n查询时间: {query_time} | 分析周期: 最近{analysis_days}个交易日 | 总概念数: {total_concepts}', 
-                 fontsize=16, fontweight='bold', y=0.995)
+    for idx, concept in enumerate(concepts_sorted, 1):
+        concept_name = concept.get('concept_name', '')
+        total_avg_change = concept.get('total_avg_change', '0%')
+        stock_count = concept.get('stock_count', 0)
+        total_up_count = concept.get('total_up_count', 0)
+        total_down_count = concept.get('total_down_count', 0)
+        
+        cols = [str(idx), concept_name, total_avg_change, str(stock_count), str(total_up_count), str(total_down_count)]
+        line = "| " + " | ".join(cols) + " |"
+        lines.append(line)
     
-    # 子图1: 累计平均涨跌幅
-    ax1 = fig.add_subplot(gs[0])
-    colors1 = ['green' if x >= 0 else 'red' for x in total_avg_changes]
-    bars1 = ax1.barh(range(len(concept_names)), total_avg_changes, color=colors1, alpha=0.7)
-    ax1.set_yticks(range(len(concept_names)))
-    ax1.set_yticklabels(concept_names, fontsize=10)
-    ax1.set_xlabel('累计平均涨跌幅 (%)', fontsize=11)
-    ax1.set_title(f'概念累计平均涨跌幅 (Top {top_n})', fontsize=12, fontweight='bold')
-    ax1.axvline(x=0, color='black', linestyle='--', linewidth=0.8)
-    ax1.grid(axis='x', alpha=0.3)
-    
-    # 在柱子上显示数值
-    for i, (bar, val) in enumerate(zip(bars1, total_avg_changes)):
-        ax1.text(val, i, f'{val:+.2f}%', 
-                va='center', ha='left' if val >= 0 else 'right', 
-                fontsize=9, fontweight='bold')
-    
-    # 子图2: 涨跌统计
-    ax2 = fig.add_subplot(gs[1])
-    x = range(len(concept_names))
-    width = 0.35
-    bars2_up = ax2.bar([i - width/2 for i in x], up_counts, width, label='上涨次数', color='red', alpha=0.7)
-    bars2_down = ax2.bar([i + width/2 for i in x], down_counts, width, label='下跌次数', color='green', alpha=0.7)
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(concept_names, rotation=45, ha='right', fontsize=10)
-    ax2.set_ylabel('次数', fontsize=11)
-    ax2.set_title(f'概念涨跌统计 (Top {top_n})', fontsize=12, fontweight='bold')
-    ax2.legend(loc='upper right')
-    ax2.grid(axis='y', alpha=0.3)
-    
-    # 在柱子上显示数值
-    for bar in bars2_up:
-        height = bar.get_height()
-        if height > 0:
-            ax2.text(bar.get_x() + bar.get_width()/2., height,
-                    f'{int(height)}', ha='center', va='bottom', fontsize=8)
-    
-    for bar in bars2_down:
-        height = bar.get_height()
-        if height > 0:
-            ax2.text(bar.get_x() + bar.get_width()/2., height,
-                    f'{int(height)}', ha='center', va='bottom', fontsize=8)
-    
-    # 子图3: 股票详情表格
-    ax3 = fig.add_subplot(gs[2])
-    ax3.axis('off')
-    ax3.set_title(f'股票详情 (Top {top_n})', fontsize=12, fontweight='bold', pad=20)
+    # 股票详情表
+    lines.append("\n## 股票详情表\n")
     
     # 从daily_stats中获取日期列表用于表头
     date_headers = []
-    date_map = {}  # 用于匹配股票数据的日期映射
+    date_map = {}
     
     if concepts_sorted and concepts_sorted[0].get('daily_stats'):
         daily_stats = concepts_sorted[0]['daily_stats']
@@ -595,28 +548,29 @@ def generate_chart_from_results(result: Dict, save_path: Optional[Path] = None, 
                     date_obj = datetime.strptime(date_str, "%Y-%m-%d")
                     mm_dd = date_obj.strftime('%m-%d')
                     date_headers.append(mm_dd)
-                    # 创建日期映射：MM-DD -> YYYYMMDD
                     date_map[mm_dd] = date_obj.strftime('%Y%m%d')
                 except:
                     date_headers.append(date_str)
     
-    # 如果没有获取到日期，使用默认值
     if len(date_headers) < analysis_days:
         date_headers = [f'D{i+1}' for i in range(analysis_days)]
-    
-    # 为每个概念创建股票详情表格
-    table_data = []
-    row_colors = []
     
     for idx, concept in enumerate(concepts_sorted):
         concept_name = concept.get('concept_name', '')
         stock_details = concept.get('stock_details', [])
         
-        # 添加概念标题行（合并概念名称和表头）
-        table_data.append([f'{concept_name}', '五日累计'] + date_headers)
-        row_colors.append('#4A90E2')
+        lines.append(f"### {idx}. {concept_name}\n")
         
-        # 添加股票详情（按5日累计涨跌幅排序，每个概念最多显示20只）
+        if not stock_details:
+            lines.append("无有效股票数据\n")
+            continue
+        
+        # 表头
+        detail_header_cols = ["股票名称(代码)", "五日累计涨跌幅"] + date_headers
+        lines.append("| " + " | ".join(detail_header_cols) + " |")
+        lines.append("|" + "|".join(["------"] * len(detail_header_cols)) + "|")
+        
+        # 股票数据（按5日累计涨跌幅排序，每个概念最多显示20只）
         for stock in stock_details[:20]:
             name = stock.get('name', '')
             code = stock.get('code', '')
@@ -635,10 +589,8 @@ def generate_chart_from_results(result: Dict, save_path: Optional[Path] = None, 
             # 按照表头日期顺序获取涨跌幅数据
             changes = []
             for header in date_headers:
-                # 从date_map中获取对应的YYYYMMDD格式日期
                 yyyymmdd = date_map.get(header, '')
                 if yyyymmdd:
-                    # 在daily_changes中查找对应日期的数据
                     found = False
                     for dc in daily_changes:
                         if dc.get('date', '') == yyyymmdd:
@@ -654,59 +606,59 @@ def generate_chart_from_results(result: Dict, save_path: Optional[Path] = None, 
                 else:
                     changes.append('--')
             
-            # 添加数据行：名称代码 + 五日累计 + 各日涨跌幅
-            table_data.append([name_code, avg_value] + changes)
-            row_colors.append('#FFFFFF' if len(table_data) % 2 == 0 else '#F0F0F0')
+            # 添加数据行
+            cols = [name_code, avg_value] + changes
+            line = "| " + " | ".join(cols) + " |"
+            lines.append(line)
         
-        # 添加空行分隔
-        table_data.append([''] + [''] * (len(date_headers) + 1))
-        row_colors.append('#FFFFFF')
+        lines.append("")
     
-    # 创建表格
-    table = ax3.table(cellText=table_data, cellLoc='left', loc='upper left',
-                      colWidths=[0.2] + [0.1] * len(date_headers) + [0.1])
+    full_content = "\n".join(lines)
     
-    # 设置表格样式
-    for (row, col), cell in table.get_celld().items():
-        if row < len(table_data):
-            cell.set_facecolor(row_colors[row])
-            cell.set_fontsize(8)
-            cell.set_edgecolor('#CCCCCC')
-            cell.set_linewidth(0.5)
-            
-            # 标题行加粗（蓝色背景的行）
-            if row_colors[row] == '#4A90E2':
-                cell.set_fontsize(9)
-                # 设置文本属性
-                text = cell.get_text()
-                text.set_fontweight('bold')
-                text.set_color('white')
+    if save_path:
+        FileUtil.write_text(full_content, save_path)
+        logger.info(f"表格已保存到: {save_path}")
     
-    # 调整表格位置
-    table.scale(1, 1.5)
-    
-    # 保存图表
-    if save_path is None:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        save_path = TOOLS_OUTPUT_DIR / f"concept_analysis_{timestamp}.png"
-    
-    plt.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    
-    logger.info(f"图表已保存到: {save_path}")
-    return str(save_path)
+    return full_content
 
 
 # ==================== 主入口函数 ====================
 
+def _check_cache_valid(days: int, market: str, 
+                       include_kc: bool, include_cy: bool) -> Optional[Path]:
+    """
+    检查缓存是否有效
+    
+    Args:
+        days: 分析天数
+        market: 市场类型
+        include_kc: 是否包含科创板
+        include_cy: 是否包含创业板
+        
+    Returns:
+        缓存文件路径，如果缓存无效则返回None
+    """
+    current_date = datetime.now().strftime("%Y%m%d")
+    table_file = TOOLS_OUTPUT_DIR / f"concept_analysis_{current_date}_{days}days_{market}_kc{include_kc}_cy{include_cy}.md"
+    
+    if table_file.exists():
+        return table_file
+    return None
+
+
 def analyze_concepts(days: int = 5, market: str = "all",
                     include_kc: bool = False, include_cy: bool = False,
                     compress: bool = False,
-                    save_chart: bool = False,
-                    chart_path: Optional[Path] = None,
+                    save_table: bool = False,
+                    table_path: Optional[Path] = None,
                     top_n: int = 20) -> Tuple[str, str]:
     """
     分析大盘概念趋势（主入口函数）
+    
+    内置数据更新和缓存逻辑：
+    - 自动检查缓存有效性
+    - 自动更新数据（如果需要）
+    - 自动保存结果
     
     Args:
         days: 分析天数，默认5天
@@ -714,12 +666,12 @@ def analyze_concepts(days: int = 5, market: str = "all",
         include_kc: 是否包含科创板，默认False
         include_cy: 是否包含创业板，默认False
         compress: 是否压缩JSON格式，默认False
-        save_chart: 是否保存图表文件，默认False
-        chart_path: 图表保存路径，如果为None则自动生成
-        top_n: 显示前N个概念，默认20（仅影响图表显示，不影响JSON输出）
+        save_table: 是否保存表格文件，默认False
+        table_path: 表格保存路径，如果为None则自动生成
+        top_n: 显示前N个概念，默认20（仅影响表格显示，不影响JSON输出）
         
     Returns:
-        (JSON格式的字符串结果, 图表文件路径字符串)
+        (JSON格式的字符串结果, 表格内容字符串)
         
     Note:
         JSON输出只包含Top 10概念的基本信息：
@@ -729,6 +681,26 @@ def analyze_concepts(days: int = 5, market: str = "all",
         - total_down_count: 对应下跌股票数量
     """
     try:
+        current_date = datetime.now().strftime("%Y%m%d")
+        
+        if table_path is None:
+            table_path = TOOLS_OUTPUT_DIR / f"concept_analysis_{current_date}_{days}days_{market}_kc{include_kc}_cy{include_cy}.md"
+        
+        cache_file = _check_cache_valid(days, market, include_kc, include_cy)
+        
+        if cache_file:
+            table_content = FileUtil.read_text(cache_file)
+            if table_content:
+                result_json = analyze_concepts_simple(
+                    days=days, market=market,
+                    include_kc=include_kc, include_cy=include_cy,
+                    compress=compress
+                )
+                result_dict = JsonUtil.loads(result_json) or {}
+                result_dict["from_cache"] = True
+                result_dict["table_output_path"] = str(cache_file)
+                return JsonUtil.dumps(result_dict), table_content
+        
         trading_days = _get_trading_days(days + 7)
         analysis_days = trading_days[:days]  # 取最新的days个交易日
         
@@ -793,26 +765,24 @@ def analyze_concepts(days: int = 5, market: str = "all",
         # 保存JSON文件
         json_output_path = None
         if result_dict:
-            json_filename = f"concept_analysis_{datetime.now().strftime('%Y%m%d')}_{days}days_{market}_kc{include_kc}_cy{include_cy}.json"
+            json_filename = f"concept_analysis_{current_date}_{days}days_{market}_kc{include_kc}_cy{include_cy}.json"
             json_output_path = TOOLS_OUTPUT_DIR / json_filename
             JsonUtil.save(result_dict, json_output_path)
             result_dict["json_output_path"] = str(json_output_path)
         
-        # 生成图表（使用完整数据）
-        chart_output_path = None
-        if save_chart and concept_results:
-            if chart_path is None:
-                chart_path = TOOLS_OUTPUT_DIR / f"concept_analysis_{datetime.now().strftime('%Y%m%d')}_{days}days_{market}_kc{include_kc}_cy{include_cy}.png"
-            
-            # 为图表生成准备完整数据
+        # 生成表格（使用完整数据）
+        table_content = None
+        if save_table and concept_results:
+            # 为表格生成准备完整数据
             chart_data = _format_concept_result_for_chart(concept_results, analysis_days)
             chart_result_dict = JsonUtil.loads(chart_data) or {}
-            chart_output_path = generate_chart_from_results(chart_result_dict, save_path=chart_path, top_n=top_n)
-            result_dict["chart_output_path"] = chart_output_path
+            table_content = generate_table_from_concept_results(chart_result_dict, save_path=table_path, top_n=top_n)
+            result_dict["table_output_path"] = str(table_path)
         else:
-            chart_output_path = "未找到概念数据"
+            table_content = "未找到概念数据"
         
-        return JsonUtil.dumps(result_dict), chart_output_path
+        result_dict["from_cache"] = False
+        return JsonUtil.dumps(result_dict), table_content
         
     except Exception as e:
         logger.error(f"分析概念数据失败: {e}")
@@ -947,13 +917,13 @@ def main():
         print("大盘概念趋势分析 - 开始分析")
         print("=" * 70)
         
-        result_json, chart_content = analyze_concepts(
+        result_json, table_content = analyze_concepts(
             days=5,
             market="all",
             include_kc=False,
             include_cy=False,
             compress=False,
-            save_chart=True,
+            save_table=True,
             top_n=10
         )
         
@@ -974,20 +944,15 @@ def main():
                       f"(上涨:{concept.get('total_up_count', 0)} "
                       f"下跌:{concept.get('total_down_count', 0)})")
             
-            # 打印图表文件路径
-            print(f"\n📊 图表已保存到: {chart_content}")
+            # 打印表格文件路径
+            table_path = result.get("table_output_path", "")
+            if table_path:
+                print(f"\n� 表格已保存到: {table_path}")
             
             # 输出JSON结果到文件
-            json_output_path = TOOLS_OUTPUT_DIR / f"concept_analysis_{datetime.now().strftime('%Y%m%d')}.json"
-            print(f"📄 准备保存JSON结果到: {json_output_path}")
-            print(f"📄 result类型: {type(result)}, 是否为空: {not result}")
-            
-            save_success = JsonUtil.save(result, json_output_path)
-            if save_success:
+            json_output_path = result.get("json_output_path")
+            if json_output_path:
                 print(f"📄 JSON结果已保存到: {json_output_path}")
-                print(f"📄 文件是否存在: {json_output_path.exists()}")
-            else:
-                print(f"❌ JSON保存失败: {json_output_path}")
         else:
             print(f"\n⚠️  {result.get('message', '未找到概念数据')}")
         
