@@ -50,3 +50,20 @@ class LogUtil:
         logging.basicConfig(level=level, format=format_str)
         LogUtil._configured = True
 
+
+GREEN = "\033[32m"
+RED = "\033[31m"
+YELLOW = "\033[33m"
+RESET = "\033[0m"
+
+
+def print_green(text: str):
+    print(f"{GREEN}{text}{RESET}")
+
+
+def print_red(text: str):
+    print(f"{RED}{text}{RESET}")
+
+
+def print_yellow(text: str):
+    print(f"{YELLOW}{text}{RESET}")

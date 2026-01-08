@@ -22,10 +22,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from agent.stock_rising_calculator import calculate_rising_stocks
-from agent.stock_concept_analyzer import analyze_concepts
+from agent.tool.stock_rising_calculator import calculate_rising_stocks
+from agent.tool.stock_concept_analyzer import analyze_concepts
 from agent.send_stock_analysis import send_rising_stocks_table, send_concept_analysis_table
-from agent.stock_data_updater import update_stock_data
+from agent.tool.stock_data_updater import update_stock_data
 from utils.json_util import JsonUtil
 
 BASE_DIR = Path(__file__).parent.parent

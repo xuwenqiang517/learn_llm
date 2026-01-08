@@ -50,7 +50,7 @@ from utils.log_util import LogUtil
 logger = LogUtil.get_logger(__name__)
 
 # ==================== 目录结构定义 ====================
-BASE_DIR = Path(__file__).parent.parent
+BASE_DIR = Path(__file__).parent.parent.parent
 TEMP_DIR = BASE_DIR / ".temp"
 DATA_DIR = TEMP_DIR / "data"
 BASE_DATA_DIR = DATA_DIR / "base"
