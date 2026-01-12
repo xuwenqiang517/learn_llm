@@ -63,16 +63,89 @@ def _update_daily_etf_data() -> None:
             
 def _update_code_list() -> None:
     try:
-        stock_list = ak.stock_info_a_code_name()
-        stock_list.to_csv(STOCK_LIST_FILE, index=False, encoding="utf-8-sig")
-        logger.info(f"股票列表已更新（{len(stock_list)}只）")
+        # 创建空的结果DataFrame
+        big_df = pd.DataFrame()
+        
+        # 获取上海主板A股
+        logger.info("获取上海主板A股...")
+        stock_sh = ak.stock_info_sh_name_code(symbol="主板A股")
+        if not stock_sh.empty:
+            stock_sh = stock_sh[["证券代码", "证券简称"]].copy()  # 使用copy避免视图警告
+            stock_sh["type"] = "上海主板"
+            stock_sh.columns = ["代码", "名称", "板块类型"]
+            big_df = pd.concat([big_df, stock_sh], ignore_index=True)
+        
+        # 获取深圳A股
+        logger.info("获取深圳A股...")
+        stock_sz = ak.stock_info_sz_name_code(symbol="A股列表")
+        if not stock_sz.empty:
+            stock_sz = stock_sz.copy()  # 使用copy避免视图警告
+            stock_sz["A股代码"] = stock_sz["A股代码"].astype(str).str.zfill(6)
+            
+            # 分离深圳主板和创业板
+            # 创业板股票代码以300开头
+            # 深圳主板股票代码以000开头
+            # 中小板股票代码以002开头
+            
+            # 深圳主板（000开头）
+            stock_sz_main = stock_sz[stock_sz["A股代码"].str.startswith("000")][["A股代码", "A股简称"]].copy()
+            if not stock_sz_main.empty:
+                stock_sz_main["type"] = "深圳主板"
+                stock_sz_main.columns = ["代码", "名称", "板块类型"]
+                big_df = pd.concat([big_df, stock_sz_main], ignore_index=True)
+            
+            # 中小板（002开头）
+            stock_sz_sme = stock_sz[stock_sz["A股代码"].str.startswith("002")][["A股代码", "A股简称"]].copy()
+            if not stock_sz_sme.empty:
+                stock_sz_sme["type"] = "中小板"
+                stock_sz_sme.columns = ["代码", "名称", "板块类型"]
+                big_df = pd.concat([big_df, stock_sz_sme], ignore_index=True)
+            
+            # 创业板（300开头）
+            stock_sz_gem = stock_sz[stock_sz["A股代码"].str.startswith("300")][["A股代码", "A股简称"]].copy()
+            if not stock_sz_gem.empty:
+                stock_sz_gem["type"] = "创业板"
+                stock_sz_gem.columns = ["代码", "名称", "板块类型"]
+                big_df = pd.concat([big_df, stock_sz_gem], ignore_index=True)
+            
+            # 创业板注册制（301开头）
+            stock_sz_gem_reg = stock_sz[stock_sz["A股代码"].str.startswith("301")][["A股代码", "A股简称"]].copy()
+            if not stock_sz_gem_reg.empty:
+                stock_sz_gem_reg["type"] = "创业板"
+                stock_sz_gem_reg.columns = ["代码", "名称", "板块类型"]
+                big_df = pd.concat([big_df, stock_sz_gem_reg], ignore_index=True)
+        
+        # 获取科创板
+        logger.info("获取科创板...")
+        stock_kcb = ak.stock_info_sh_name_code(symbol="科创板")
+        if not stock_kcb.empty:
+            stock_kcb = stock_kcb[["证券代码", "证券简称"]].copy()  # 使用copy避免视图警告
+            stock_kcb["type"] = "科创板"
+            stock_kcb.columns = ["代码", "名称", "板块类型"]
+            big_df = pd.concat([big_df, stock_kcb], ignore_index=True)
+        
+        # 获取北京股
+        logger.info("获取北京股...")
+        stock_bse = ak.stock_info_bj_name_code()
+        if not stock_bse.empty:
+            stock_bse = stock_bse[["证券代码", "证券简称"]].copy()  # 使用copy避免视图警告
+            stock_bse["type"] = "北京股"
+            stock_bse.columns = ["代码", "名称", "板块类型"]
+            big_df = pd.concat([big_df, stock_bse], ignore_index=True)
+        
+        # 保存结果
+        big_df.to_csv(BASE_DATA_DIR / "stock_list.csv", index=False, encoding="utf-8-sig")
+        logger.info(f"股票列表已更新（{len(big_df)}只）")
+        logger.info(f"各类股票数量:")
+        logger.info(big_df["板块类型"].value_counts())
     except Exception as e:
         logger.error(f"更新股票列表失败: {e}")
+        raise
 
 def _update_daily_stock_data() -> None:
     trading_days = _get_trading_days(15)
-    stock_list_df = pd.read_csv(STOCK_LIST_FILE, encoding="utf-8-sig", dtype={"code": str})
-    for stock_code, stock_name in tqdm(stock_list_df[["code", "name"]].values, desc="更新 股票 日线数据", unit="条", total=stock_list_df.shape[0]):
+    stock_list_df = pd.read_csv(STOCK_LIST_FILE, encoding="utf-8-sig", dtype={"代码": str})
+    for stock_code, stock_name in tqdm(stock_list_df[["代码", "名称"]].values, desc="更新 股票 日线数据", unit="条", total=stock_list_df.shape[0]):
         cache_file = STOCK_DATA_DIR / f"{stock_code}.csv"
         if _is_cache_valid(cache_file):
             continue
