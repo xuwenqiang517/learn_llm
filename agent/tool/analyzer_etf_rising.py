@@ -146,5 +146,13 @@ def _analyzer() -> pd.DataFrame:
 
 if __name__ == "__main__":
     rs=_analyzer()
-    rs.to_csv(ANALYZER_DIR / "etf_rising.csv", index=False, encoding="utf-8-sig")
-    print(rs)
+    if not rs.empty:
+        # 保存为标准CSV格式（逗号分隔）
+        rs.to_csv(ANALYZER_DIR / "etf_rising.csv", index=False, encoding="utf-8-sig")
+        
+        # 保存为TSV格式（制表符分隔，打开时自动对齐）
+        rs.to_csv(ANALYZER_DIR / "etf_rising.tsv", index=False, encoding="utf-8-sig", sep="\t")
+        
+        print(rs)
+    else:
+        print("未找到符合条件的ETF")
