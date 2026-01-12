@@ -1,14 +1,3 @@
-# 发件人信息
-sender_email = "since480@163.com"  # 比如 123456@163.com
-sender_password = "FP3w2trEpAqPN4x8"    # 不是登录密码，是邮箱的SMTP授权码
-smtp_server = "smtp.163.com"         # 邮箱SMTP服务器，不同邮箱不一样
-smtp_port = 465                      # SSL端口，一般是465
-
-# 收件人信息
-receiver_email = "598570789@qq.com"  # 可以是多个，用列表：["a@qq.com", "b@163.com"]
-email_subject = "【测试】发送分析表格到邮箱"  # 邮件标题
-
-
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -19,6 +8,19 @@ import io
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
+from datetime import datetime
+
+# 发件人信息
+sender_email = "since480@163.com"  # 比如 123456@163.com
+sender_password = "FP3w2trEpAqPN4x8"    # 不是登录密码，是邮箱的SMTP授权码
+smtp_server = "smtp.163.com"         # 邮箱SMTP服务器，不同邮箱不一样
+smtp_port = 465                      # SSL端口，一般是465
+
+# 收件人信息
+receiver_email = "598570789@qq.com"  # 可以是多个，用列表：["a@qq.com", "b@163.com"]
+# 获取当前日期
+today_date = datetime.now().strftime("%Y-%m-%d")
+email_subject = f"【测试】发送分析表格到邮箱_{today_date}"  # 邮件标题
 
 # 确保使用支持中文的字体
 plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'DejaVu Sans']  # macOS和Linux的中文字体选项

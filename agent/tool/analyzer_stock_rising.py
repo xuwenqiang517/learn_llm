@@ -145,8 +145,11 @@ def _analyzer() -> pd.DataFrame:
             if col in result_df.columns:
                 result_df[col] = result_df[col].round(1)
         
-        # 按连涨天数降序排序
-        result_df = result_df.sort_values(by="连涨天数", ascending=False)
+        # 按连涨天数、累计涨幅、三日涨幅降序排序
+        result_df = result_df.sort_values(
+            by=["连涨天数", "累计涨幅", "最近3日涨幅"],
+            ascending=False
+        )
         return result_df
     else:
         return pd.DataFrame()
