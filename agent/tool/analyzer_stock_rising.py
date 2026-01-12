@@ -30,8 +30,10 @@ def _analyzer() -> pd.DataFrame:
     # 读取股票列表
     stock_list_df = pd.read_csv(STOCK_LIST_FILE, encoding="utf-8-sig", dtype={"代码": str})
     
-    # 过滤掉科创板和创业板股票
+    # 过滤掉科创板、创业板和北京股
     stock_list_df = stock_list_df[~stock_list_df["板块类型"].isin(["科创板", "创业板", "北京股"])]
+    # 过滤掉名称带ST的异常股票
+    stock_list_df = stock_list_df[~stock_list_df["名称"].str.contains("ST")]
     
     # 结果列表
     result_data = []
@@ -40,7 +42,6 @@ def _analyzer() -> pd.DataFrame:
     for _, stock in stock_list_df.iterrows():
         stock_code = stock["代码"]
         stock_name = stock["名称"]
-        plate_type = stock["板块类型"]
         
         # 读取股票历史数据
         stock_file = DAILY_DATA_DIR / f"{stock_code}.csv"
@@ -97,7 +98,6 @@ def _analyzer() -> pd.DataFrame:
                 result_row = {
                     "股票代码": stock_code,
                     "股票名称": stock_name,
-                    "板块类型": plate_type,
                     "连涨天数": consecutive_rising_days,
                     "累计涨幅": cumulative_gain,
                     "最近3日涨幅": recent_3_gain
@@ -126,7 +126,7 @@ def _analyzer() -> pd.DataFrame:
             return pd.DataFrame()
         
         # 分离固定列和日期列
-        fixed_columns = ["股票代码", "股票名称", "板块类型", "连涨天数", "累计涨幅", "最近3日涨幅"]
+        fixed_columns = ["股票代码", "股票名称", "连涨天数", "累计涨幅", "最近3日涨幅"]
         date_columns = [col for col in result_df.columns if col not in fixed_columns]
         
         # 如果有日期列，按日期排序并只保留最近3个
@@ -145,16 +145,19 @@ def _analyzer() -> pd.DataFrame:
             if col in result_df.columns:
                 result_df[col] = result_df[col].round(1)
         
-        # 按连涨天数、累计涨幅、三日涨幅降序排序
+        # 确保股票代码为字符串类型，并且格式化保持6位长度（填充前导零）
+        result_df["股票代码"] = result_df["股票代码"].astype(str).str.zfill(6)
+        
+        # 按连涨天数、累计涨幅、三日涨幅降序排序，并只保留前100条
         result_df = result_df.sort_values(
             by=["连涨天数", "累计涨幅", "最近3日涨幅"],
             ascending=False
-        )
+        ).head(150)
+        result_df.to_csv(ANALYZER_DIR / "stock_rising.csv", index=False, encoding="utf-8-sig")
         return result_df
     else:
         return pd.DataFrame()
 
 if __name__ == "__main__":
     rs=_analyzer()
-    rs.to_csv(ANALYZER_DIR / "stock_rising.csv", index=False, encoding="utf-8-sig")
     print(rs)

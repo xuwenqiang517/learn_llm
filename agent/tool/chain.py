@@ -35,8 +35,21 @@ def run_full_chain():
         
         print_green("今天是交易日，开始执行后续任务")
         
-        # 1. 数据更新
-        print_green("\n2. 开始更新数据...")
+        #更新akshare版本
+        print_green("2. 检查并更新akshare版本...")
+        try:
+            import subprocess
+            import sys
+            subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', 'akshare'], 
+                          check=True, capture_output=True, text=True)
+            print_green("akshare版本更新成功！")
+        except subprocess.CalledProcessError as e:
+            print_red(f"akshare版本更新失败: {e.stderr}")
+            print_green("继续使用当前版本...")
+        except Exception as e:
+            print_red(f"更新akshare时发生未知错误: {e}")
+            print_green("继续使用当前版本...")
+        
         _update_etf_list()              # 更新ETF列表
         _update_daily_etf_data()        # 更新ETF日线数据
         _update_code_list()             # 更新股票代码列表

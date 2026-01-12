@@ -39,7 +39,10 @@ def _update_etf_list() -> None:
         try: 
             print_green("开始更新 ETF 列表...")
             df = ak.fund_etf_spot_em()
-            df[["代码", "名称"]].to_csv(ETF_LIST_FILE, index=False, encoding="utf-8-sig")
+            # 将总市值从元转换为亿元，并添加"亿"单位，保留1位小数
+            if "总市值" in df.columns:
+                df["总市值"] = (df["总市值"] / 100000000).round(1).astype(str) + "亿"
+            df[["代码", "名称", "总市值", "换手率", "量比"]].to_csv(ETF_LIST_FILE, index=False, encoding="utf-8-sig")
             print_green(f"ETF 列表已保存到: {ETF_LIST_FILE}")
         except Exception as e:
             print_red(f"更新 ETF 列表失败: {e}")

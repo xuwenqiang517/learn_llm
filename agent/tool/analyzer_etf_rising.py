@@ -29,6 +29,15 @@ def _analyzer() -> pd.DataFrame:
     # 读取ETF列表
     etf_list_df = pd.read_csv(ETF_LIST_FILE, encoding="utf-8-sig", dtype={"代码": str})
     
+    # 过滤掉总市值不到1亿的ETF
+    if "总市值" in etf_list_df.columns:
+        # 提取总市值的数字部分（去除"亿"单位）
+        etf_list_df["总市值数值"] = pd.to_numeric(etf_list_df["总市值"].str.replace("亿", ""), errors="coerce")
+        # 过滤总市值大于等于1亿的ETF
+        etf_list_df = etf_list_df[etf_list_df["总市值数值"] >= 1.0]
+        # 删除临时列
+        etf_list_df = etf_list_df.drop(columns=["总市值数值"])
+    
     # 结果列表
     result_data = []
     
@@ -36,6 +45,8 @@ def _analyzer() -> pd.DataFrame:
     for _, etf in etf_list_df.iterrows():
         etf_code = etf["代码"]
         etf_name = etf["名称"]
+        # 获取ETF的总市值、换手率和量比
+        etf_total_market_value = etf.get("总市值", "")
         
         # 读取ETF历史数据
         etf_file = ETF_DATA_DIR / f"{etf_code}.csv"
@@ -91,6 +102,7 @@ def _analyzer() -> pd.DataFrame:
                 result_row = {
                     "ETF代码": etf_code,
                     "ETF名称": etf_name,
+                    "总市值": etf_total_market_value,
                     "连涨天数": consecutive_rising_days,
                     "累计涨幅": cumulative_gain,
                     "最近3日涨幅": recent_3_gain
@@ -119,7 +131,7 @@ def _analyzer() -> pd.DataFrame:
             return pd.DataFrame()
         
         # 分离固定列和日期列
-        fixed_columns = ["ETF代码", "ETF名称", "连涨天数", "累计涨幅", "最近3日涨幅"]
+        fixed_columns = ["ETF代码", "ETF名称", "总市值", "连涨天数", "累计涨幅", "最近3日涨幅"]
         date_columns = [col for col in result_df.columns if col not in fixed_columns]
         
         # 如果有日期列，按日期排序并只保留最近3个
@@ -143,19 +155,11 @@ def _analyzer() -> pd.DataFrame:
             by=["连涨天数", "累计涨幅", "最近3日涨幅"],
             ascending=False
         )
+        result_df.to_csv(ANALYZER_DIR / "etf_rising.csv", index=False, encoding="utf-8-sig")
         return result_df
     else:
         return pd.DataFrame()
 
 if __name__ == "__main__":
     rs=_analyzer()
-    if not rs.empty:
-        # 保存为标准CSV格式（逗号分隔）
-        rs.to_csv(ANALYZER_DIR / "etf_rising.csv", index=False, encoding="utf-8-sig")
-        
-        # 保存为TSV格式（制表符分隔，打开时自动对齐）
-        rs.to_csv(ANALYZER_DIR / "etf_rising.tsv", index=False, encoding="utf-8-sig", sep="\t")
-        
-        print(rs)
-    else:
-        print("未找到符合条件的ETF")
+    print(rs)
