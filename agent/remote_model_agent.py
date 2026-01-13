@@ -34,7 +34,8 @@ from tool.analyzer_stock_rising import _analyzer as stock_analyzer
 from tool.send_msg import send_email
 
 
-
+# 获取当前日期
+today_date = datetime.now().strftime("%Y-%m-%d")
 
 @wrap_model_call
 def log_model_call(request: ModelRequest,handler: Callable[[ModelRequest], ModelResponse],) -> ModelResponse:
