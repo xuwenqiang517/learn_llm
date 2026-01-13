@@ -6,10 +6,10 @@
 import pandas as pd
 from pathlib import Path
 import sys
-# 将项目根目录添加到Python路径
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from utils.file_util import FileUtil
 from utils.log_util import LogUtil
+from agent.tool.volume_price_analyzer import get_volume_price_summary
 
 logger = LogUtil.get_logger(__name__)
 
@@ -98,6 +98,15 @@ def _analyzer() -> pd.DataFrame:
                 # 计算最近3日涨幅
                 recent_3_gain = sum(recent_3_days)
                 
+                # 分析量价形态
+                volume_price_pattern = get_volume_price_summary(
+                    etf_df_reverse,
+                    price_change_col="涨跌幅",
+                    volume_col="成交量",
+                    turnover_col="换手率",
+                    days=3
+                )
+                
                 # 添加到结果列表
                 result_row = {
                     "ETF代码": etf_code,
@@ -105,7 +114,8 @@ def _analyzer() -> pd.DataFrame:
                     "总市值": etf_total_market_value,
                     "连涨天数": consecutive_rising_days,
                     "累计涨幅": cumulative_gain,
-                    "最近3日涨幅": recent_3_gain
+                    "最近3日涨幅": recent_3_gain,
+                    "量价形态": volume_price_pattern
                 }
                 
                 # 添加最近3天的日期和涨幅
@@ -131,7 +141,7 @@ def _analyzer() -> pd.DataFrame:
             return pd.DataFrame()
         
         # 分离固定列和日期列
-        fixed_columns = ["ETF代码", "ETF名称", "总市值", "连涨天数", "累计涨幅", "最近3日涨幅"]
+        fixed_columns = ["ETF代码", "ETF名称", "总市值", "连涨天数", "累计涨幅", "最近3日涨幅", "量价形态"]
         date_columns = [col for col in result_df.columns if col not in fixed_columns]
         
         # 如果有日期列，按日期排序并只保留最近3个

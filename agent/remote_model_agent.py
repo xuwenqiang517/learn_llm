@@ -1,0 +1,125 @@
+import json
+from pathlib import Path
+import sys
+from typing import Callable
+from langchain_core.messages import human
+from pydantic import BaseModel
+import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+
+
+from langchain.agents import create_agent
+from langchain.agents.middleware import (
+    AgentState,
+    ModelRequest,
+    ModelResponse,
+    wrap_model_call,
+    wrap_tool_call,
+)
+from langchain.messages import HumanMessage, ToolMessage, SystemMessage
+from langchain.tools.tool_node import ToolCallRequest
+from langgraph.runtime import Runtime
+from langgraph.types import Command
+from langgraph.checkpoint.memory import InMemorySaver  
+from langchain.tools import tool
+from datetime import datetime
+
+from agent.common import create_ollama_chat
+from utils.log_util import print_green, print_red, print_yellow
+
+from tool.analyzer_etf_rising import _analyzer as etf_analyzer
+from tool.analyzer_stock_rising import _analyzer as stock_analyzer
+from tool.send_msg import send_email
+
+
+
+
+@wrap_model_call
+def log_model_call(request: ModelRequest,handler: Callable[[ModelRequest], ModelResponse],) -> ModelResponse:
+    print_yellow("before_model_call:"+request.messages[-1].content)
+    response = handler(request)
+    for res in response.result:
+        if res.tool_calls:
+            print_yellow(f"after_model_call 调用工具:{res.tool_calls}")
+        else:
+            print_yellow(f"after_model_call: 输出:{res.content}")
+    return response
+
+@wrap_tool_call
+def log_tool_call(request: ToolCallRequest,handler: Callable[[ToolCallRequest], ToolMessage | Command],) -> ToolMessage | Command:
+    print_green(f"before_tool_call: 工具:{request.tool_call.get('name')},参数:{request.tool_call.get('args')}")
+    response = handler(request)
+    print_green("after_tool_call:"+str(response))
+    return response
+
+
+@tool(description="获取ETF连涨分析 没有参数，默认返回最近3天连涨的etf")
+def get_etf_analyzer() -> pd.DataFrame:
+    return etf_analyzer()
+
+@tool(description="获取股票连涨分析 没有参数，默认返回最近3天连涨的股票")
+def get_stock_analyzer() -> pd.DataFrame:
+    return stock_analyzer()
+
+def main():
+    llm=create_ollama_chat(model="llama3.1:8b")
+    agent=create_agent(llm
+                        ,checkpointer=InMemorySaver()
+                        ,tools=[get_etf_analyzer,get_stock_analyzer]
+                        ,middleware=[log_model_call,log_tool_call]
+    )
+    system_msg = SystemMessage("""你是专业的A股证券分析师，精通通过数据分析发现投资机会。
+
+## 工作流程
+1. 当用户询问证券分析时，根据问题调用 get_etf_analyzer 或 get_stock_analyzer 工具获取数据
+2. 工具会返回DataFrame格式的数据，包含代码、名称、涨幅等信息
+3. 收到工具返回的数据后，基于数据生成分析报告
+
+## 分析任务
+基于搜索结果，深入分析连续上涨证券的投资价值。
+
+## 分析要点
+
+1. **概念板块分析**
+   - 统计所有证券的概念分布，找出出现频次最高的热门概念
+   - 分析概念板块的联动效应（多只同概念证券同时上涨）
+   - 识别概念炒作的持续性
+
+2. **成交量分析**
+   - 对比近期成交量与历史均值，识别放量上涨的证券
+   - 分析成交量放大的证券是否配合价格上涨
+   - 关注量价配合良好的标的
+
+3. **强势标的筛选**
+   - 累计涨幅适中（15%-50%），避免追高
+   - 连续上涨天数越多越强势
+   - 主营业务清晰、概念热度高的优先
+
+4. **风险识别**
+   - 涨幅过大（>60%）的证券谨慎追高
+   - 无量上涨的证券风险较高
+   - 业绩亏损或基本面恶化的标的规避
+
+## 输出要求
+
+1. **重点关注标的池**（5-10只，放量上涨+热门概念+量价配合）
+2. **风险提示**（规避高位无量、业绩亏损等风险标的）
+
+用简洁专业的语言给出分析结论，数据支撑论点。""")
+    human_msg=HumanMessage(content="根据最近的市场情况，推荐一下etf和股票，不要仅根据连涨分析，考虑其他因素")
+    messages=[system_msg,human_msg]
+    res=agent.invoke({"messages": messages},{"configurable": {"thread_id": "1"}})
+    # for res in agent.stream({"messages": messages},{"configurable": {"thread_id": "1"}}):
+    #     print_red(res)
+    #     print("="*60)
+
+    print("="*60)
+    print_red(res)
+    send_email(res["messages"][-1].content)
+
+    
+        
+if __name__ == "__main__":
+    main()

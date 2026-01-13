@@ -16,7 +16,7 @@ smtp_port = 465                      # SSL端口，一般是465
 receiver_email = "598570789@qq.com"  # 可以是多个，用列表：["a@qq.com", "b@163.com"]
 # 获取当前日期
 today_date = datetime.now().strftime("%Y-%m-%d")
-email_subject = f"分析表格到邮箱_{today_date}"  # 邮件标题
+email_subject = f"【JDb】选股助手_{today_date}"  # 邮件标题
 
 # 将项目根目录添加到Python路径
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -98,8 +98,21 @@ def send_analyzer_table():
           <body>
             <h1>股票/ETF连涨分析结果</h1>
             <div class="summary">
-              <p>您好！以下是最新的分析表格（{today_date}）：</p>
-              <p>共包含 {len(existing_files)} 个分析表格：{', '.join([f'{len(df)}条{type}' for df, type, _ in [generate_html_table_from_csv(f) for f in existing_files] if df is not None])}</p>
+              <p><strong>量价形态说明：</strong></p>
+              <ul>
+                <li>量价齐升：价格上涨且成交量增加</li>
+                <li>价涨量缩：价格上涨但成交量减少</li>
+                <li>量价平稳：价格上涨但成交量平稳</li>
+                <li>量价震荡：成交量变化不一致</li>
+                <li>换手递增：换手率逐日增加</li>
+                <li>换手递减：换手率逐日减少</li>
+                <li>换手平稳：换手率保持稳定</li>
+                <li>换手震荡：换手率变化不一致</li>
+                <li>高换手：平均换手率 > 10%</li>
+                <li>中换手：平均换手率 5%-10%</li>
+                <li>低换手：平均换手率 < 5%</li>
+                <li>【推荐】：量价齐升 且（换手递增 或 高换手）</li>
+              </ul>
             </div>
         """
         
@@ -136,6 +149,24 @@ def send_analyzer_table():
             server.send_message(msg)
         
         print(f"邮件发送成功！已发送 {len(existing_files)} 个HTML表格到 {receiver_email}")
+        
+    except Exception as e:
+        print(f"邮件发送失败：{e}")
+
+def send_email(msg_content:str)->None:
+    try:
+        msg = MIMEMultipart('related')
+        msg['From'] = sender_email
+        msg['To'] = receiver_email if isinstance(receiver_email, str) else ", ".join(receiver_email)
+        msg['Subject'] = email_subject
+        
+        msg.attach(MIMEText(msg_content.replace('\n', '<br>'), 'html', 'utf-8'))
+        
+        with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+        
+        print(f"邮件发送成功！已发送到 {receiver_email}")
         
     except Exception as e:
         print(f"邮件发送失败：{e}")
