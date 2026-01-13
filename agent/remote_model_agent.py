@@ -26,7 +26,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langchain.tools import tool
 from datetime import datetime
 
-from agent.common import create_ollama_chat
+from agent.common import create_ollama_chat, create_dashscope_chat
 from utils.log_util import print_green, print_red, print_yellow
 
 from tool.analyzer_etf_rising import _analyzer as etf_analyzer
@@ -63,8 +63,15 @@ def get_etf_analyzer() -> pd.DataFrame:
 def get_stock_analyzer() -> pd.DataFrame:
     return stock_analyzer()
 
+
+model_name="qwen-plus"
+
 def main():
-    llm=create_ollama_chat(model="llama3.1:8b")
+    # llm=create_ollama_chat(model="llama3.1:8b")
+    llm = create_dashscope_chat(
+            model=model_name,
+            temperature=0.1
+        )
     agent=create_agent(llm
                         ,checkpointer=InMemorySaver()
                         ,tools=[get_etf_analyzer,get_stock_analyzer]
@@ -111,13 +118,10 @@ def main():
     human_msg=HumanMessage(content="根据最近的市场情况，推荐一下etf和股票，不要仅根据连涨分析，考虑其他因素")
     messages=[system_msg,human_msg]
     res=agent.invoke({"messages": messages},{"configurable": {"thread_id": "1"}})
-    # for res in agent.stream({"messages": messages},{"configurable": {"thread_id": "1"}}):
-    #     print_red(res)
-    #     print("="*60)
 
     print("="*60)
     print_red(res)
-    send_email(res["messages"][-1].content)
+    send_email(subject=f"【JDb】{model_name}选股助手_大模型分析{today_date}",msg_content=res["messages"][-1].content+f"\n分析由{model_name}模型生成")
 
     
         

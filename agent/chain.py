@@ -5,7 +5,7 @@ from pathlib import Path
 from datetime import datetime
 
 # 将项目根目录添加到Python路径
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # 导入所需的函数
 from agent.tool.data_updater import _get_trading_days, _update_etf_list, _update_daily_etf_data, _update_code_list, _update_daily_stock_data
@@ -13,6 +13,7 @@ from agent.tool.analyzer_etf_rising import _analyzer as etf_analyzer
 from agent.tool.analyzer_stock_rising import _analyzer as stock_analyzer
 from agent.tool.send_msg import send_analyzer_table
 from utils.log_util import LogUtil, print_green, print_red
+from remote_model_agent import main as remote_model_agent_main
 
 logger = LogUtil.get_logger(__name__)
 
@@ -74,8 +75,12 @@ def run_full_chain():
         # 4. 发送邮件
         print_green("\n5. 开始发送分析结果邮件...")
         send_analyzer_table()
-        
         print_green("\n=== 完整任务链运行完成 ===")
+
+        # 5. 调用远程模型分析
+        print_green("\n6. 开始调用远程模型分析...")
+        remote_model_agent_main()
+        
         
     except Exception as e:
         print_red(f"任务链运行失败: {e}")

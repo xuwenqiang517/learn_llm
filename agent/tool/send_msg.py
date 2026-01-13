@@ -16,7 +16,7 @@ smtp_port = 465                      # SSL端口，一般是465
 receiver_email = "598570789@qq.com"  # 可以是多个，用列表：["a@qq.com", "b@163.com"]
 # 获取当前日期
 today_date = datetime.now().strftime("%Y-%m-%d")
-email_subject = f"【JDb】选股助手_{today_date}"  # 邮件标题
+email_subject = f"【JDb】选股助手_连涨数据{today_date}"  # 邮件标题
 
 # 将项目根目录添加到Python路径
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -153,12 +153,12 @@ def send_analyzer_table():
     except Exception as e:
         print(f"邮件发送失败：{e}")
 
-def send_email(msg_content:str)->None:
+def send_email(subject:str,msg_content:str)->None:
     try:
         msg = MIMEMultipart('related')
         msg['From'] = sender_email
         msg['To'] = receiver_email if isinstance(receiver_email, str) else ", ".join(receiver_email)
-        msg['Subject'] = email_subject
+        msg['Subject'] = subject
         
         msg.attach(MIMEText(msg_content.replace('\n', '<br>'), 'html', 'utf-8'))
         
