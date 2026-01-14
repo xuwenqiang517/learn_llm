@@ -1,6 +1,7 @@
 # 串联数据更新、分析和发送邮件的完整流程
 
 import sys
+import subprocess
 from pathlib import Path
 from datetime import datetime
 
@@ -8,12 +9,13 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # 导入所需的函数
-from agent.tool.data_updater import _get_trading_days, _update_etf_list, _update_daily_etf_data, _update_code_list, _update_daily_stock_data
+from agent.tool.load_base_data import _get_trading_days, _update_all_data
+from agent.tool.calculate_data import _calculate_data
 from agent.tool.analyzer_etf_rising import _analyzer as etf_analyzer
 from agent.tool.analyzer_stock_rising import _analyzer as stock_analyzer
 from agent.tool.send_msg import send_analyzer_table
+from agent.remote_model_agent import main as remote_model_agent_main
 from utils.log_util import LogUtil, print_green, print_red
-from remote_model_agent import main as remote_model_agent_main
 
 logger = LogUtil.get_logger(__name__)
 
@@ -36,25 +38,18 @@ def run_full_chain():
         
         print_green("今天是交易日，开始执行后续任务")
         
-        #更新akshare版本
         print_green("2. 检查并更新akshare版本...")
         try:
-            import subprocess
-            import sys
             subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', 'akshare'], 
                           check=True, capture_output=True, text=True)
             print_green("akshare版本更新成功！")
-        except subprocess.CalledProcessError as e:
-            print_red(f"akshare版本更新失败: {e.stderr}")
-            print_green("继续使用当前版本...")
         except Exception as e:
-            print_red(f"更新akshare时发生未知错误: {e}")
+            print_red(f"akshare版本更新失败: {e}")
             print_green("继续使用当前版本...")
         
-        _update_etf_list()              # 更新ETF列表
-        _update_daily_etf_data()        # 更新ETF日线数据
-        _update_code_list()             # 更新股票代码列表
-        _update_daily_stock_data()      # 更新股票日线数据
+        # 1.更新基础数据
+        _update_all_data()
+        _calculate_data()
         
         # 2. ETF连涨分析
         print_green("\n3. 开始分析ETF连涨情况...")

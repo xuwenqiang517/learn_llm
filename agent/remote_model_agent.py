@@ -29,9 +29,9 @@ from datetime import datetime
 from agent.common import create_ollama_chat, create_dashscope_chat
 from utils.log_util import print_green, print_red, print_yellow
 
-from tool.analyzer_etf_rising import _analyzer as etf_analyzer
-from tool.analyzer_stock_rising import _analyzer as stock_analyzer
-from tool.send_msg import send_email
+from agent.tool.analyzer_etf_rising import _analyzer as etf_analyzer
+from agent.tool.analyzer_stock_rising import _analyzer as stock_analyzer
+from agent.tool.send_msg import send_email
 
 
 # 获取当前日期
