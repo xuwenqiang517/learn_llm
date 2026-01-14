@@ -102,7 +102,7 @@ def _process_file(file_path: Path) -> None:
     """处理单个文件"""
     try:
         df = pd.read_csv(file_path, encoding="utf-8-sig")
-        if len(df) < 20:
+        if len(df) < 5:
             return
         
         df = _calculate_indicators(df)

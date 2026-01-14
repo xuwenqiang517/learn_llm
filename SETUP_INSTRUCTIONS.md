@@ -23,7 +23,7 @@ chmod +x /Users/wq/Documents/github/learn_llm/run_analysis.sh
 
 ## 2. 设置crontab定时任务（推荐）
 
-当您获得系统权限后，可以按照以下步骤设置每天下午14点自动运行分析流程：
+当您获得系统权限后，可以按照以下步骤设置每天下午16点自动运行分析流程：
 
 ### 步骤1：打开crontab编辑器
 ```bash

@@ -113,6 +113,13 @@ def send_analyzer_table():
                 <li>低换手：平均换手率 < 5%</li>
                 <li>【推荐】：量价齐升 且（换手递增 或 高换手）</li>
               </ul>
+              <p><strong>技术信号说明：</strong></p>
+              <ul>
+                <li><strong>量价形态：</strong>量价齐升/量价震荡/价涨量缩等，换手递增/震荡/递减，高/中/低换手</li>
+                <li><strong>量能状态：</strong>放量(>1.5x)/缩量(<0.7x)/正常</li>
+                <li><strong>量能均线：</strong>VOL_MA5/MA10/20的多头/空头排列</li>
+                <li><strong>MACD状态：</strong>金叉/死叉/强势/偏强/偏弱/弱势</li>
+              </ul>
             </div>
         """
         
