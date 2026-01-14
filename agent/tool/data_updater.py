@@ -25,7 +25,8 @@ CACHE_EXPIRY_DAYS = 1
 
 
 def _is_cache_valid(cache_file: Path) -> bool:
-    return cache_file.exists() and FileUtil.is_cache_valid(cache_file, CACHE_EXPIRY_DAYS)
+    return False
+    # return cache_file.exists() and FileUtil.is_cache_valid(cache_file, CACHE_EXPIRY_DAYS)
 
 def _get_trading_days(days: int = 15) -> list:
     df = ak.tool_trade_date_hist_sina()
