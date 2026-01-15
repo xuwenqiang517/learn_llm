@@ -8,8 +8,6 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-
-
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
     AgentState,
@@ -29,13 +27,12 @@ from datetime import datetime
 from agent.common import create_ollama_chat, create_dashscope_chat
 from utils.log_util import print_green, print_red, print_yellow
 
-from agent.tool.analyzer_etf_rising import _analyzer as etf_analyzer
-from agent.tool.analyzer_stock_rising import _analyzer as stock_analyzer
+from agent.tool.pick_data import PICK_DIR
 from agent.tool.send_msg import send_email
 
 
-# 获取当前日期
 today_date = datetime.now().strftime("%Y-%m-%d")
+today_str = datetime.now().strftime("%Y%m%d")
 
 @wrap_model_call
 def log_model_call(request: ModelRequest,handler: Callable[[ModelRequest], ModelResponse],) -> ModelResponse:
@@ -56,13 +53,19 @@ def log_tool_call(request: ToolCallRequest,handler: Callable[[ToolCallRequest], 
     return response
 
 
-@tool(description="获取ETF连涨分析 没有参数，默认返回最近3天连涨的etf")
-def get_etf_analyzer() -> pd.DataFrame:
-    return etf_analyzer()
+@tool(description="获取精选ETF列表 读取今日筛选结果，包含技术面和基本面指标")
+def get_pick_etf() -> pd.DataFrame:
+    etf_file = PICK_DIR / f"etf_{today_str}.csv"
+    if etf_file.exists():
+        return pd.read_csv(etf_file, dtype={'代码': str})
+    return pd.DataFrame()
 
-@tool(description="获取股票连涨分析 没有参数，默认返回最近3天连涨的股票")
-def get_stock_analyzer() -> pd.DataFrame:
-    return stock_analyzer()
+@tool(description="获取精选股票列表 读取今日筛选结果，包含技术面和基本面指标")
+def get_pick_stock() -> pd.DataFrame:
+    stock_file = PICK_DIR / f"stock_{today_str}.csv"
+    if stock_file.exists():
+        return pd.read_csv(stock_file, dtype={'代码': str})
+    return pd.DataFrame()
 
 
 model_name="qwen-plus"
@@ -75,45 +78,54 @@ def main():
         )
     agent=create_agent(llm
                         ,checkpointer=InMemorySaver()
-                        ,tools=[get_etf_analyzer,get_stock_analyzer]
+                        ,tools=[get_pick_etf,get_pick_stock]
                         ,middleware=[log_model_call,log_tool_call]
     )
-    system_msg = SystemMessage("""你是专业的A股证券分析师，精通通过数据分析发现投资机会。
+    system_msg = SystemMessage("""你是专业的A股证券分析师，基于精选数据为用户提供投资建议。
 
 ## 工作流程
-1. 当用户询问证券分析时，根据问题调用 get_etf_analyzer 或 get_stock_analyzer 工具获取数据
-2. 工具会返回DataFrame格式的数据，包含代码、名称、涨幅等信息
-3. 收到工具返回的数据后，基于数据生成分析报告,包含基本面、技术面、资金面、消息面
+1. 调用 get_pick_etf 和 get_pick_stock 工具获取今日精选的ETF和股票
+2. 数据已包含基本面和技术面指标：PE、PB、总市值、净利润同比、营收同比、MA5/10/20、VOL_MA5/10/20、MACD、RSI、BOLL、ATR、连涨天数、3日涨幅、5日涨幅等
+3. 基于数据深入分析，生成投资建议报告
 
 ## 分析任务
-基于搜索结果，深入分析连续上涨证券的投资价值。
+对精选池中的ETF和股票进行深度分析，给出投资建议。
 
 ## 分析要点
 
 1. **基本面分析**
-   - 分析股票的营收结构、估值水平、业务竞争力、盈利结构 在时序上的变化趋势
+   - 营收增长：查看营收同比、净利润同比指标
+   - 估值水平：分析PE（市盈率）、PB（市净率）是否合理
+   - 市值特征：总市值、流通市值，判断盘子大小
+   - 盈利质量：净利润增长是否稳定
 
 2. **技术面分析**
-   - 均线趋势，结合个股BBI、均线（5日/20日/20日/60日）指标，分析当前趋势方向并推演是否支持趋势的延续
-   - 动量多空，结合KDJ、MACD指标，判断该股是否处于超买或超卖区间，并分析短期或中期中期反转概率
-   - 相对强弱，对比个股和指数与所属板块的走势是否强势？分析强势或弱势的原因
+   - 均线趋势：MA5 > MA10 > MA20 多头排列表示上升趋势
+   - 量能配合：VOL_MA5 > VOL_MA10 > VOL_MA20 量能均线多头
+   - 动量指标：MACD金叉/死叉、RSI超买超卖
+   - 波动性：ATR反映波动幅度，BOLL反映震荡区间
+   - 短期涨幅：3日涨幅、5日涨幅判断是否追高
 
 3. **强势标的筛选**
-   - 累计涨幅适中（15%-50%），避免追高
-   - 连续上涨天数越多越强势
-   - 主营业务清晰、概念热度高的优先
+   - 涨幅适中（10%-30%），连续上涨
+   - 量能配合（量能均线多头）
+   - 基本面良好（营收/净利润增长为正）
+   - 换手率合理（3%-10%最佳）
 
 4. **风险识别**
-   - 无量上涨的证券风险较高
-   - 业绩亏损或基本面恶化的标的规避
+   - 涨幅过大（>50%）谨慎追高
+   - 无量上涨风险（换手率过低）
+   - 业绩亏损（净利润同比为负）
+   - 高估值（PE/PB异常高）
 
 ## 输出要求
 
-1. **重点关注标的池**（5-10只，放量上涨+热门概念+量价配合）
-2. **风险提示**（规避高位无量、业绩亏损等风险标的）
+1. **ETF精选分析**（2-5只，分析其投资价值）
+2. **股票重点关注**（5-10只，排序推荐）
+3. **风险提示**（规避高位无量、业绩亏损、高估值标的）
 
 用简洁专业的语言给出分析结论，数据支撑论点。""")
-    human_msg=HumanMessage(content="根据最近的市场情况，推荐一下etf和股票，不要仅根据连涨分析，考虑其他因素")
+    human_msg=HumanMessage(content=f"分析{today_date}精选的ETF和股票，基于基本面和技术面指标给出投资建议")
     messages=[system_msg,human_msg]
     res=agent.invoke({"messages": messages},{"configurable": {"thread_id": "1"}})
 

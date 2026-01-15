@@ -26,37 +26,37 @@ BASE_DIR = Path(__file__).parent.parent.parent
 TEMP_DIR = BASE_DIR / ".temp"
 DATA_DIR = TEMP_DIR / "data"
 ANALYZER_DIR = DATA_DIR / "analyzer"
+PICK_DIR = DATA_DIR / "pick"
 
 def generate_html_table_from_csv(csv_path):
     """从CSV文件生成HTML表格"""
     try:
-        # 读取CSV文件，指定股票代码和ETF代码为字符串类型
-        df = pd.read_csv(csv_path, dtype={'股票代码': str, 'ETF代码': str})
-        
-        # 确定是股票还是ETF数据
-        if '股票代码' in df.columns:
-            data_type = '股票'
-            title = '股票连涨分析表格'
-        elif 'ETF代码' in df.columns:
-            data_type = 'ETF'
-            title = 'ETF连涨分析表格'
+        df = pd.read_csv(csv_path, dtype={'代码': str, '股票代码': str, 'ETF代码': str})
+
+        if '代码' in df.columns and '名称' in df.columns:
+            if '收盘' in df.columns:
+                data_type = 'ETF'
+                title = 'ETF精选'
+            else:
+                data_type = '股票'
+                title = '股票精选'
         else:
-            return None, None
-        
+            return None, None, None
+
         return df, data_type, title
-        
+
     except Exception as e:
         print(f"读取CSV文件失败 {csv_path}: {e}")
         return None, None, None
 
 def send_analyzer_table():
-    # 邮件附件文件列表（ETF在前，股票在后）
+    today = datetime.now().strftime("%Y%m%d")
+
     files_to_send = [
-        ANALYZER_DIR / "etf_rising.csv",
-        ANALYZER_DIR / "stock_rising.csv"
+        PICK_DIR / f"etf_{today}.csv",
+        PICK_DIR / f"stock_{today}.csv"
     ]
-    
-    # 检查文件是否存在
+
     existing_files = []
     for file_path in files_to_send:
         if file_path.exists():
@@ -80,7 +80,7 @@ def send_analyzer_table():
         <html>
           <head>
             <meta charset='utf-8'>
-            <title>分析结果</title>
+            <title>选股助手</title>
             <style>
               body { font-family: 'Microsoft YaHei', Arial, sans-serif; line-height: 1.6; margin: 0 auto; max-width: 1200px; padding: 20px; }
               h1 { color: #2c3e50; text-align: center; }
@@ -96,29 +96,16 @@ def send_analyzer_table():
             </style>
           </head>
           <body>
-            <h1>股票/ETF连涨分析结果</h1>
+            <h1>选股助手 - 精选股票/ETF</h1>
             <div class="summary">
-              <p><strong>量价形态说明：</strong></p>
+              <p><strong>筛选条件：</strong></p>
               <ul>
-                <li>量价齐升：价格上涨且成交量增加</li>
-                <li>价涨量缩：价格上涨但成交量减少</li>
-                <li>量价平稳：价格上涨但成交量平稳</li>
-                <li>量价震荡：成交量变化不一致</li>
-                <li>换手递增：换手率逐日增加</li>
-                <li>换手递减：换手率逐日减少</li>
-                <li>换手平稳：换手率保持稳定</li>
-                <li>换手震荡：换手率变化不一致</li>
-                <li>高换手：平均换手率 > 10%</li>
-                <li>中换手：平均换手率 5%-10%</li>
-                <li>低换手：平均换手率 < 5%</li>
-                <li>【推荐】：量价齐升 且（换手递增 或 高换手）</li>
-              </ul>
-              <p><strong>技术信号说明：</strong></p>
-              <ul>
-                <li><strong>量价形态：</strong>量价齐升/量价震荡/价涨量缩等，换手递增/震荡/递减，高/中/低换手</li>
-                <li><strong>量能状态：</strong>放量(>1.5x)/缩量(<0.7x)/正常</li>
-                <li><strong>量能均线：</strong>VOL_MA5/MA10/20的多头/空头排列</li>
-                <li><strong>MACD状态：</strong>金叉/死叉/强势/偏强/偏弱/弱势</li>
+                <li>过滤创业板（300/301开头）、科创板（688开头）、北交所（8/92开头）</li>
+                <li>过滤ST/*ST股票</li>
+                <li>过滤数据不完整的股票（近15天缺失超过3天）</li>
+                <li>5日多头排列（MA5 > MA10 > MA20）</li>
+                <li>3日涨幅超过15%</li>
+                <li>5日涨幅超过20%</li>
               </ul>
             </div>
         """
