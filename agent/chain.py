@@ -46,30 +46,16 @@ def run_full_chain():
             print_green("继续使用当前版本...")
         
         # 1.更新基础数据
+        print_green("\n 开始更新基础数据...")
         _update_all_data()
+        # 2. 挑选数据
+        print_green("\n 开始挑选数据...")
         _run_pick()
-        # # 2. ETF连涨分析
-        # print_green("\n3. 开始分析ETF连涨情况...")
-        # etf_result = etf_analyzer()
-        # if etf_result.empty:
-        #     print_green("未找到符合条件的ETF")
-        # else:
-        #     print_green(f"ETF连涨分析完成，共找到 {len(etf_result)} 个符合条件的ETF")
-        
-        # # 3. 股票连涨分析
-        # print_green("\n4. 开始分析股票连涨情况...")
-        # stock_result = stock_analyzer()
-        # if stock_result.empty:
-        #     print_green("未找到符合条件的股票")
-        # else:
-        #     print_green(f"股票连涨分析完成，共找到 {len(stock_result)} 个符合条件的股票")
-        
-        # 4. 发送邮件
-        print_green("\n5. 开始发送分析结果邮件...")
+        # 3. 发送邮件
+        print_green("\n 开始发送分析结果邮件...")
         send_analyzer_table()
-
-        # 5. 调用远程模型分析
-        print_green("\n6. 开始调用远程模型分析...")
+        # 4. 调用远程模型分析
+        print_green("\n 开始调用远程模型分析...")
         remote_model_agent_main()
         
         

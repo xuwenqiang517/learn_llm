@@ -17,9 +17,8 @@ MSG_DIR = DATA_DIR / "msg"
 
 FileUtil.ensure_dirs(MSG_DIR)
 
-yesterday = datetime.now() - timedelta(days=1)
-today_str = yesterday.strftime("%Y%m%d")
-today_date = yesterday.strftime("%Y-%m-%d")
+today_str = datetime.now().strftime("%Y%m%d")
+today_date = datetime.now().strftime("%Y-%m-%d")
 
 
 def _fetch_stock_news(code: str) -> dict:
@@ -35,8 +34,7 @@ def _fetch_stock_news(code: str) -> dict:
                     if title and title != "nan":
                         news_list.append({
                             "标题": title[:100],
-                            "发布时间": str(row.get("发布时间", "")),
-                            "链接": str(row.get("新闻链接", ""))[:200]
+                            "发布时间": str(row.get("发布时间", ""))
                         })
         except Exception:
             pass
@@ -62,8 +60,7 @@ def _fetch_policy_news() -> list:
                     if title and title != "nan":
                         news_list.append({
                             "标题": title[:150],
-                            "发布时间": str(row.get("发布时间", "")),
-                            "链接": str(row.get("新闻链接", ""))[:200]
+                            "发布时间": str(row.get("发布时间", ""))
                         })
         except Exception:
             continue

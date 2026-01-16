@@ -33,13 +33,12 @@ def generate_html_table_from_csv(csv_path):
     try:
         df = pd.read_csv(csv_path, dtype={'代码': str, '股票代码': str, 'ETF代码': str})
 
-        if '代码' in df.columns and '名称' in df.columns:
-            if '收盘' in df.columns:
-                data_type = 'ETF'
-                title = 'ETF精选'
-            else:
-                data_type = '股票'
-                title = '股票精选'
+        if 'ETF代码' in df.columns:
+            data_type = 'ETF'
+            title = 'ETF精选'
+        elif '股票代码' in df.columns:
+            data_type = '股票'
+            title = '股票精选'
         else:
             return None, None, None
 
