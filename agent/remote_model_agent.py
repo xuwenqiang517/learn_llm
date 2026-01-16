@@ -30,9 +30,15 @@ from utils.log_util import print_green, print_red, print_yellow
 from agent.tool.pick_data import PICK_DIR
 from agent.tool.send_msg import send_email
 
+DATA_DIR = Path(__file__).parent.parent.parent / ".temp" / "data"
+PICK_DIR = DATA_DIR / "pick"
+MSG_DIR = DATA_DIR / "msg"
+
 
 today_date = datetime.now().strftime("%Y-%m-%d")
 today_str = datetime.now().strftime("%Y%m%d")
+
+MSG_DIR = DATA_DIR / "msg"
 
 @wrap_model_call
 def log_model_call(request: ModelRequest,handler: Callable[[ModelRequest], ModelResponse],) -> ModelResponse:
@@ -67,6 +73,14 @@ def get_pick_stock() -> pd.DataFrame:
         return pd.read_csv(stock_file, dtype={'代码': str})
     return pd.DataFrame()
 
+@tool(description="获取今日消息面数据 包含政策新闻、市场涨跌、概念板块、行业板块、宏观经济、个股消息等")
+def get_message_report() -> dict:
+    msg_file = MSG_DIR / f"message_{today_str}.json"
+    if msg_file.exists():
+        with open(msg_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
 
 model_name="qwen-plus"
 
@@ -78,18 +92,17 @@ def main():
         )
     agent=create_agent(llm
                         ,checkpointer=InMemorySaver()
-                        ,tools=[get_pick_etf,get_pick_stock]
+                        ,tools=[get_pick_etf,get_pick_stock,get_message_report]
                         ,middleware=[log_model_call,log_tool_call]
     )
-    system_msg = SystemMessage("""你是专业的A股证券分析师，基于精选数据为用户提供投资建议。
+    system_msg = SystemMessage("""你是专业的A股证券分析师，基于精选数据和消息面为用户提供投资建议。
 
 ## 工作流程
 1. 调用 get_pick_etf 和 get_pick_stock 工具获取今日精选的ETF和股票
-2. 数据已包含基本面和技术面指标：PE、PB、总市值、净利润同比、营收同比、MA5/10/20、VOL_MA5/10/20、MACD、RSI、BOLL、ATR、连涨天数、3日涨幅、5日涨幅等
-3. 基于数据深入分析，生成投资建议报告
-
-## 分析任务
-对精选池中的ETF和股票进行深度分析，给出投资建议。
+2. 调用 get_message_report 工具获取消息面数据
+3. 数据已包含基本面和技术面指标：PE、PB、总市值、净利润同比、营收同比、MA5/10/20、VOL_MA5/10/20、MACD、RSI、BOLL、ATR、连涨天数、3日涨幅、5日涨幅等
+4. 消息面数据包含：政策新闻、市场涨跌统计、概念板块涨幅、行业板块领涨、宏观经济指标、个股相关新闻等
+5. 基于数据和消息面深入分析，生成投资建议报告
 
 ## 分析要点
 
@@ -106,23 +119,32 @@ def main():
    - 波动性：ATR反映波动幅度，BOLL反映震荡区间
    - 短期涨幅：3日涨幅、5日涨幅判断是否追高
 
-3. **强势标的筛选**
+3. **消息面分析**
+   - 查看政策新闻，判断对相关板块的影响
+   - 查看概念板块领涨情况，匹配精选股票的行业归属
+   - 查看个股相关新闻，如资产重组、业绩公告等重大事件
+   - 结合宏观经济数据判断市场整体环境
+
+4. **强势标的筛选**
    - 涨幅适中（10%-30%），连续上涨
    - 量能配合（量能均线多头）
    - 基本面良好（营收/净利润增长为正）
    - 换手率合理（3%-10%最佳）
+   - 有热点概念或政策利好支撑
 
-4. **风险识别**
+5. **风险识别**
    - 涨幅过大（>50%）谨慎追高
    - 无量上涨风险（换手率过低）
    - 业绩亏损（净利润同比为负）
    - 高估值（PE/PB异常高）
+   - 个股有利空新闻或停牌风险
 
 ## 输出要求
 
 1. **ETF精选分析**（2-5只，分析其投资价值）
 2. **股票重点关注**（5-10只，排序推荐）
-3. **风险提示**（规避高位无量、业绩亏损、高估值标的）
+3. **消息面热点解读**（解读与精选标的相关的政策和行业新闻）
+4. **风险提示**（规避高位无量、业绩亏损、高估值、有利空消息的标的）
 
 用简洁专业的语言给出分析结论，数据支撑论点。""")
     human_msg=HumanMessage(content=f"分析{today_date}精选的ETF和股票，基于基本面和技术面指标给出投资建议")

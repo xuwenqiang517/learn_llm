@@ -25,6 +25,7 @@ STOCK_LIST_FILE = BASE_DATA_DIR / "stock_list.csv"
 
 _spot_cache = {}
 _lrb_cache = {}
+_industry_cache = {}
 
 # ==============基础数据==============
 
@@ -208,7 +209,36 @@ def _fetch_lrb_data() -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def _update_stock_fundamentals(file_path: Path, spot_df: pd.DataFrame, lrb_df: pd.DataFrame) -> None:
+def _fetch_industry_mapping() -> dict:
+    """获取股票行业映射 {代码: 行业名称}"""
+    if _industry_cache:
+        return _industry_cache
+
+    try:
+        industry_df = ak.stock_board_industry_name_em()
+        if industry_df.empty:
+            return {}
+
+        for _, row in industry_df.iterrows():
+            code = row["板块代码"]
+            name = row["板块名称"]
+            try:
+                cons_df = ak.stock_board_industry_cons_em(symbol=code)
+                if not cons_df.empty:
+                    for _, stock in cons_df.iterrows():
+                        stock_code = str(stock["代码"]).zfill(6)
+                        _industry_cache[stock_code] = name
+            except Exception:
+                continue
+
+        print_green(f"获取行业映射成功: {len(_industry_cache)} 只股票有行业归属")
+    except Exception as e:
+        print_red(f"获取行业映射失败: {e}")
+
+    return _industry_cache
+
+
+def _update_stock_fundamentals(file_path: Path, spot_df: pd.DataFrame, lrb_df: pd.DataFrame, industry_map: dict) -> None:
     """更新单个股票文件的基本面数据"""
     try:
         code = file_path.stem
@@ -236,6 +266,8 @@ def _update_stock_fundamentals(file_path: Path, spot_df: pd.DataFrame, lrb_df: p
         else:
             df["净利润同比"] = None
             df["营收同比"] = None
+
+        df["行业"] = industry_map.get(code, None)
 
         df.to_csv(file_path, index=False, encoding="utf-8-sig")
     except Exception as e:
@@ -275,13 +307,14 @@ def _fill_fundamentals_aspect(max_workers: int = 20) -> None:
     stock_spot = _fetch_stock_spot()
     etf_spot = _fetch_etf_spot()
     lrb_data = _fetch_lrb_data()
+    industry_map = _fetch_industry_mapping()
 
     stock_files = list(STOCK_DATA_DIR.glob("*.csv"))
     etf_files = list(ETF_DATA_DIR.glob("*.csv"))
 
     print_green(f"开始更新股票基本面，共 {len(stock_files)} 个文件")
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        list(tqdm(executor.map(lambda f: _update_stock_fundamentals(f, stock_spot, lrb_data), stock_files),
+        list(tqdm(executor.map(lambda f: _update_stock_fundamentals(f, stock_spot, lrb_data, industry_map), stock_files),
                   desc="更新股票基本面", unit="个", total=len(stock_files)))
     print_green("股票基本面更新完成")
 
