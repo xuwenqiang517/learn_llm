@@ -8,13 +8,9 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from utils.file_util import FileUtil
-
-DATA_DIR = Path(__file__).parent.parent.parent / ".temp" / "data"
-ETF_DATA_DIR = DATA_DIR / "etf_data"
-STOCK_DATA_DIR = DATA_DIR / "stock_data"
-PICK_DIR = DATA_DIR / "pick"
-
-FileUtil.ensure_dirs(PICK_DIR)
+from utils.data_path_util import (
+    get_stock_list_file, get_etf_list_file, get_stock_data_dir, get_etf_data_dir, get_pick_dir
+)
 
 
 class FilterPlugin:
@@ -25,7 +21,7 @@ class FilterPlugin:
         raise NotImplementedError
 
 
-class BullishArrangementFilter(FilterPlugin):
+class 多头排列过滤器(FilterPlugin):
     def __init__(self, days: int = 3):
         self.days = days
         self.name = f"多头排列_{days}日"
@@ -47,7 +43,7 @@ class BullishArrangementFilter(FilterPlugin):
         return df.head(0)
 
 
-class VolumeBullishFilter(FilterPlugin):
+class 量能多头过滤器(FilterPlugin):
     def __init__(self, days: int = 3):
         self.days = days
         self.name = f"量能多头_{days}日"
@@ -69,7 +65,7 @@ class VolumeBullishFilter(FilterPlugin):
         return df.head(0)
 
 
-class GainRateFilter(FilterPlugin):
+class 涨幅过滤器(FilterPlugin):
     def __init__(self, days: int = 3, threshold: float = 5.0):
         self.days = days
         self.threshold = threshold
@@ -85,7 +81,7 @@ class GainRateFilter(FilterPlugin):
         return df if total_gain > self.threshold else df.head(0)
 
 
-class ChiNextFilter(FilterPlugin):
+class 过滤创业板(FilterPlugin):
     name = "过滤创业板"
     desc = "过滤创业板股票（300/301开头）"
 
@@ -93,7 +89,7 @@ class ChiNextFilter(FilterPlugin):
         return df.head(0) if code and (code.startswith("300") or code.startswith("301")) else df
 
 
-class STARMarketFilter(FilterPlugin):
+class 过滤科创板(FilterPlugin):
     name = "过滤科创板"
     desc = "过滤科创板股票（688开头）"
 
@@ -101,7 +97,7 @@ class STARMarketFilter(FilterPlugin):
         return df.head(0) if code and code.startswith("688") else df
 
 
-class BJSEFilter(FilterPlugin):
+class 过滤北交所(FilterPlugin):
     name = "过滤北交所"
     desc = "过滤北交所股票（8开头或92开头）"
 
@@ -109,7 +105,7 @@ class BJSEFilter(FilterPlugin):
         return df.head(0) if code and (code.startswith("8") or code.startswith("92")) else df
 
 
-class STFilter(FilterPlugin):
+class 过滤ST(FilterPlugin):
     name = "过滤ST"
     desc = "过滤ST/*ST股票"
 
@@ -120,7 +116,7 @@ class STFilter(FilterPlugin):
         return df.head(0) if name and ("ST" in name or "*ST" in name) else df
 
 
-class SuspendedFilter(FilterPlugin):
+class 过滤数据不完整(FilterPlugin):
     name = "过滤数据不完整"
     desc = "过滤近N天数据不完整的股票（上市不足N天或存在交易日缺失）"
     _trading_calendar: pd.DataFrame = None
@@ -179,8 +175,12 @@ def _load_data(data_dir: Path) -> Dict[str, pd.DataFrame]:
     return data
 
 
-STOCK_LIST_FILE = DATA_DIR / "base" / "stock_list.csv"
-ETF_LIST_FILE = DATA_DIR / "base" / "etf_list.csv"
+STOCK_LIST_FILE = get_stock_list_file()
+ETF_LIST_FILE = get_etf_list_file()
+STOCK_DATA_DIR = get_stock_data_dir()
+ETF_DATA_DIR = get_etf_data_dir()
+PICK_DIR = get_pick_dir()
+FileUtil.ensure_dirs(PICK_DIR)
 
 
 def _load_stock_names() -> Dict[str, str]:
@@ -342,30 +342,25 @@ def run_pick(
 
     return etf_df, stock_df
 
-
-
-BULLISH_3 = BullishArrangementFilter(days=3)
-BULLISH_5 = BullishArrangementFilter(days=5)
-VOL_BULLISH_3 = VolumeBullishFilter(days=3)
-VOL_BULLISH_5 = VolumeBullishFilter(days=5)
-GAIN_3_5 = GainRateFilter(days=3, threshold=5.0)
-GAIN_3_10 = GainRateFilter(days=3, threshold=10.0)
-GAIN_3_15 = GainRateFilter(days=3, threshold=15.0)
-DATA_COMPLETE_15 = SuspendedFilter(days=15)
-GAIN_3_20 = GainRateFilter(days=3, threshold=20.0)
-GAIN_5_5 = GainRateFilter(days=5, threshold=5.0)
-GAIN_5_10 = GainRateFilter(days=5, threshold=10.0)
-GAIN_5_15 = GainRateFilter(days=5, threshold=15.0)
-GAIN_5_20 = GainRateFilter(days=5, threshold=20.0)
-CHINEXT = ChiNextFilter()
-STAR_MARKET = STARMarketFilter()
-BJSE = BJSEFilter()
-STOCK_FILTER = STFilter()
-
 def _run_pick():
     etf_result, stock_result = run_pick(
-        etf_filters=[BULLISH_3, GAIN_3_5, GAIN_5_10],
-        stock_filters=[CHINEXT, STAR_MARKET, BJSE, STOCK_FILTER, DATA_COMPLETE_15, BULLISH_3,VOL_BULLISH_3, GAIN_3_15, GAIN_5_20]
+        etf_filters=[
+            多头排列过滤器(days=3),
+            涨幅过滤器(days=3, threshold=5.0),
+            涨幅过滤器(days=7, threshold=10.0),
+        ],
+        stock_filters=[
+            过滤创业板(),
+            过滤科创板(),
+            过滤北交所(),
+            过滤ST(),
+            过滤数据不完整(days=15),
+            多头排列过滤器(days=3),
+            量能多头过滤器(days=3),
+            涨幅过滤器(days=1, threshold=3),
+            涨幅过滤器(days=3, threshold=10.0),
+            涨幅过滤器(days=5, threshold=20.0),
+        ]
     )
 
 

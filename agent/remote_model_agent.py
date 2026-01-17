@@ -26,17 +26,13 @@ from datetime import datetime
 
 from agent.common import create_ollama_chat, create_dashscope_chat
 from utils.log_util import print_green, print_red, print_yellow
-
-from agent.tool.pick_data import PICK_DIR
+from utils.data_path_util import get_pick_dir, get_msg_dir, get_pick_etf_file, get_pick_stock_file, get_message_file
 from agent.tool.send_msg import send_email
 
-BASE_DIR = Path(__file__).parent.parent
-DATA_DIR = BASE_DIR / ".temp" / "data"
-PICK_DIR = DATA_DIR / "pick"
-MSG_DIR = DATA_DIR / "msg"
-
-
 today_str = datetime.now().strftime("%Y%m%d")
+
+PICK_DIR = get_pick_dir()
+MSG_DIR = get_msg_dir()
 
 @wrap_model_call
 def log_model_call(request: ModelRequest,handler: Callable[[ModelRequest], ModelResponse],) -> ModelResponse:
@@ -59,7 +55,7 @@ def log_tool_call(request: ToolCallRequest,handler: Callable[[ToolCallRequest], 
 
 @tool(description="获取精选ETF列表 读取今日筛选结果，包含技术面和基本面指标")
 def get_pick_etf() -> pd.DataFrame:
-    etf_file = PICK_DIR / f"etf_{today_str}.csv"
+    etf_file = get_pick_etf_file(today_str)
     if etf_file.exists():
         print_green(f"读取{etf_file}")
         return pd.read_csv(etf_file, dtype={'代码': str})
@@ -68,7 +64,7 @@ def get_pick_etf() -> pd.DataFrame:
 
 @tool(description="获取精选股票列表 读取今日筛选结果，包含技术面和基本面指标")
 def get_pick_stock() -> pd.DataFrame:
-    stock_file = PICK_DIR / f"stock_{today_str}.csv"
+    stock_file = get_pick_stock_file(today_str)
     if stock_file.exists():
         print_green(f"读取{stock_file}")
         return pd.read_csv(stock_file, dtype={'代码': str})
@@ -77,7 +73,7 @@ def get_pick_stock() -> pd.DataFrame:
 
 @tool(description="获取今日消息面数据 包含政策新闻、市场涨跌、概念板块、行业板块、宏观经济、个股消息等")
 def get_message_report() -> dict:
-    msg_file = MSG_DIR / f"message_{today_str}.json"
+    msg_file = get_message_file(today_str)
     if msg_file.exists():
         print_green(f"读取{msg_file}")
         with open(msg_file, "r", encoding="utf-8") as f:

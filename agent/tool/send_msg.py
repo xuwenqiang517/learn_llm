@@ -13,20 +13,13 @@ smtp_server = "smtp.163.com"         # 邮箱SMTP服务器，不同邮箱不一�
 smtp_port = 465                      # SSL端口，一般是465
 
 # 收件人信息
-receiver_email = "598570789@qq.com"  # 可以是多个，用列表：["a@qq.com", "b@163.com"]
-# 获取当前日期
-today_date = datetime.now().strftime("%Y-%m-%d")
-email_subject = f"【JDb】选股助手_连涨数据{today_date}"  # 邮件标题
+receiver_email = "598570789@qq.com"
 
-# 将项目根目录添加到Python路径
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-# 分析结果文件路径
-BASE_DIR = Path(__file__).parent.parent.parent
-TEMP_DIR = BASE_DIR / ".temp"
-DATA_DIR = TEMP_DIR / "data"
-ANALYZER_DIR = DATA_DIR / "analyzer"
-PICK_DIR = DATA_DIR / "pick"
+from utils.data_path_util import get_pick_dir
+
+PICK_DIR = get_pick_dir()
 
 def generate_html_table_from_csv(csv_path):
     """从CSV文件生成HTML表格"""
@@ -50,6 +43,7 @@ def generate_html_table_from_csv(csv_path):
 
 def send_analyzer_table():
     today = datetime.now().strftime("%Y%m%d")
+    email_subject = f"【JDb】选股助手_连涨数据{today}"
 
     files_to_send = [
         PICK_DIR / f"etf_{today}.csv",

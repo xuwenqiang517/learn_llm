@@ -17,24 +17,10 @@ from agent.tool.pick_data import _run_pick
 
 logger = LogUtil.get_logger(__name__)
 
-def is_today_trading_day() -> bool:
-    """判断今天是否是交易日"""
-    today = datetime.today().strftime("%Y%m%d")
-    trading_days = _get_trading_days(5)  # 获取最近5个交易日
-    return today in trading_days
-
 def run_full_chain():
     """运行完整的任务链"""
     try:
         print_green("=== 开始运行完整任务链 ===")
-        
-        # 判断今天是否是交易日
-        print_green("1. 判断今天是否是交易日...")
-        if not is_today_trading_day():
-            print_green("今天不是交易日，无需执行后续任务")
-            return
-        
-        print_green("今天是交易日，开始执行后续任务")
         
         print_green("2. 检查并更新akshare版本...")
         try:
