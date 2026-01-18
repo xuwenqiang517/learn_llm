@@ -37,9 +37,12 @@ FAST_TEST_MODE = False
 FAST_TEST_SAMPLE_SIZE = 300
 
 
-def _get_trading_days(days: int = 15) -> list:
+def _get_trading_days(days: int = None) -> list:
     df = ak.tool_trade_date_hist_sina()
-    trading_days = df[df["trade_date"] <= date.today()].tail(days)["trade_date"].tolist()
+    if days:
+        trading_days = df[df["trade_date"] <= date.today()].tail(days)["trade_date"].tolist()
+    else:
+        trading_days = df[df["trade_date"] <= date.today()]["trade_date"].tolist()
     print_green(f"获取交易日列表成功: {len(trading_days)} 条")
     return [str(day).replace("-", "") for day in trading_days]
 
@@ -56,8 +59,8 @@ def _update_etf_list() -> None:
             df["总市值"] = (df["总市值"] / 100000000).round(2).astype(str) + "亿"
         df[["代码", "名称", "总市值", "换手率", "量比"]].to_csv(ETF_LIST_FILE, index=False, encoding="utf-8-sig")
         print_green(f"ETF 列表已保存到: {ETF_LIST_FILE}")
-        last_trading = get_last_trading_day()
-        _delete_old_list_files("etf_list", last_trading)
+        # last_trading = get_last_trading_day()
+        # _delete_old_list_files("etf_list", last_trading)
         print_green("已清理旧版 ETF 列表文件")
     except Exception as e:
         print_red(f"更新 ETF 列表失败: {e}")
@@ -127,28 +130,31 @@ def _update_code_list() -> None:
         big_df.to_csv(STOCK_LIST_FILE, index=False, encoding="utf-8-sig")
         logger.info(f"股票列表已更新（{len(big_df)}只）")
         logger.info(big_df["板块类型"].value_counts())
-        last_trading = get_last_trading_day()
-        _delete_old_list_files("stock_list", last_trading)
+        # last_trading = get_last_trading_day()
+        # _delete_old_list_files("stock_list", last_trading)
         logger.info("已清理旧版股票列表文件")
     except Exception as e:
         logger.error(f"更新股票列表失败: {e}")
         raise
 
 
-def _has_missing_days(cache_file: Path, trading_days: list) -> bool:
+def _has_missing_days(cache_file: Path, trading_days: list, check_all: bool = False) -> bool:
     if not cache_file.exists():
         return True
     cached_df = pd.read_csv(cache_file, encoding="utf-8-sig", parse_dates=["日期"])
     if cached_df.empty:
         return True
     cached_dates = set(cached_df["日期"].dt.strftime("%Y%m%d").tolist())
+    if check_all:
+        missing_days = [day for day in trading_days if day not in cached_dates]
+        return len(missing_days) > 0
     recent_days = trading_days[-3:]
     missing_days = [day for day in recent_days if day not in cached_dates]
     return len(missing_days) > 0
 
 
-def _update_daily_data(list_file: Path, data_dir: Path, desc: str, fetch_func, max_workers: int = THREAD_POOL_IO) -> tuple:
-    trading_days = _get_trading_days(40)
+def _update_daily_data(list_file: Path, data_dir: Path, desc: str, fetch_func, max_workers: int = THREAD_POOL_IO, fetch_all_history: bool = True) -> tuple:
+    trading_days = _get_trading_days() if fetch_all_history else _get_trading_days(40)
     list_df = pd.read_csv(list_file, encoding="utf-8-sig", dtype={"代码": str})
     updated_files = []
     stats = {"remote": 0, "cached": 0, "failed": 0}
@@ -156,7 +162,7 @@ def _update_daily_data(list_file: Path, data_dir: Path, desc: str, fetch_func, m
     def _update_single(code_name: tuple) -> str:
         code, name = code_name
         cache_file = data_dir / f"{code}.csv"
-        if _has_missing_days(cache_file, trading_days):
+        if _has_missing_days(cache_file, trading_days, fetch_all_history):
             try:
                 hist_df = fetch_func(symbol=code, start_date=trading_days[0], end_date=trading_days[-1])
                 if not hist_df.empty:
@@ -190,7 +196,7 @@ def _update_daily_data(list_file: Path, data_dir: Path, desc: str, fetch_func, m
 def _fetch_stock_spot() -> pd.DataFrame:
     cache_file = get_stock_spot_cache_file()
     cached = load_cache(cache_file)
-    if cached is not None and not _is_cache_expired(cache_file, days=1):
+    if cached is not None and not _is_cache_expired(cache_file, hours=24):
         _spot_cache["spot"] = cached
         print_green(f"从缓存加载A股实时行情: {len(cached)} 条")
         return cached
@@ -211,7 +217,7 @@ def _fetch_stock_spot() -> pd.DataFrame:
 def _fetch_etf_spot() -> pd.DataFrame:
     cache_file = get_etf_spot_cache_file()
     cached = load_cache(cache_file)
-    if cached is not None and not _is_cache_expired(cache_file, days=1):
+    if cached is not None and not _is_cache_expired(cache_file, hours=24):
         _spot_cache["etf"] = cached
         print_green(f"从缓存加载ETF实时行情: {len(cached)} 条")
         return cached
@@ -231,7 +237,7 @@ def _fetch_etf_spot() -> pd.DataFrame:
 def _fetch_lrb_data() -> pd.DataFrame:
     cache_file = get_lrb_cache_file()
     cached = load_cache(cache_file)
-    if cached is not None and not _is_cache_expired(cache_file, days=30):
+    if cached is not None and not _is_cache_expired(cache_file, hours=720):
         _lrb_cache["lrb"] = cached
         print_green(f"从缓存加载利润表数据: {len(cached)} 条")
         return cached
@@ -252,7 +258,7 @@ def _fetch_lrb_data() -> pd.DataFrame:
 def _fetch_industry_mapping() -> dict:
     cache_file = get_industry_cache_file()
     cached = load_cache(cache_file)
-    if cached is not None and not _is_cache_expired(cache_file, days=7):
+    if cached is not None and not _is_cache_expired(cache_file, hours=168):
         _industry_cache.update(cached)
         print_green(f"从缓存加载行业映射: {len(cached)} 只股票")
         return _industry_cache
@@ -436,6 +442,18 @@ def _calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df = _calculate_rsi(df)
     df = _calculate_boll(df)
     df = _calculate_atr(df)
+    
+    if all(col in df.columns for col in ["MA5", "MA10", "MA20"]):
+        df["MA_多头"] = ((df["MA5"] > df["MA10"]) & (df["MA10"] > df["MA20"])).astype(int)
+        ma5_ma10_diff = df["MA5"] - df["MA10"]
+        df["MA5_趋势"] = (ma5_ma10_diff > 0).astype(int)
+        df["MA10_趋势"] = ((df["MA10"] - df["MA20"]) > 0).astype(int)
+    
+    if all(col in df.columns for col in ["VOL_MA5", "VOL_MA10", "VOL_MA20"]):
+        df["VOL_多头"] = ((df["VOL_MA5"] > df["VOL_MA10"]) & (df["VOL_MA10"] > df["VOL_MA20"])).astype(int)
+        if "成交量" in df.columns:
+            df["量能充沛"] = (df["成交量"] > df["VOL_MA5"] * 2).astype(int)
+    
     return df
 
 
@@ -498,7 +516,7 @@ def _calculate_indicators_incremental(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _reorder_columns(df: pd.DataFrame) -> pd.DataFrame:
-    column_order = ["日期", "股票代码", "开盘", "收盘", "最高", "最低", "成交量", "成交额", "振幅", "涨跌幅", "连涨天数", "3日涨幅", "5日涨幅", "换手率", "PE", "PB", "总市值", "流通市值", "净利润同比", "营收同比", "行业", "MA5", "MA10", "MA20", "VOL_MA5", "VOL_MA10", "VOL_MA20", "DIF", "DEA", "MACD", "RSI", "BOLL_MID", "BOLL_UP", "BOLL_LOW", "ATR"]
+    column_order = ["日期", "股票代码", "开盘", "收盘", "最高", "最低", "成交量", "成交额", "振幅", "涨跌幅", "连涨天数", "3日涨幅", "5日涨幅", "换手率", "PE", "PB", "总市值", "流通市值", "净利润同比", "营收同比", "行业", "MA5", "MA10", "MA20", "VOL_MA5", "VOL_MA10", "VOL_MA20", "DIF", "DEA", "MACD", "RSI", "BOLL_MID", "BOLL_UP", "BOLL_LOW", "ATR", "MA_多头", "MA5_趋势", "MA10_趋势", "VOL_多头", "量能充沛"]
     df = df.copy()
     if "涨跌额" in df.columns:
         df = df.drop(columns=["涨跌额"])
@@ -545,19 +563,52 @@ def _fill_technical_aspect(files: list = None) -> None:
     print_green("技术指标计算完成")
 
 
-def _update_all_data():
+def _update_all_data(fetch_all_history: bool = True):
     _update_etf_list()
     _update_code_list()
-    etf_updated, etf_stats = _update_daily_data(get_etf_list_file(), ETF_DATA_DIR, "更新 ETF 日线数据", ak.fund_etf_hist_em)
-    stock_updated, stock_stats = _update_daily_data(get_stock_list_file(), STOCK_DATA_DIR, "更新 股票 日线数据", ak.stock_zh_a_hist)
+    etf_updated, etf_stats = _update_daily_data(get_etf_list_file(), ETF_DATA_DIR, "更新 ETF 日线数据", ak.fund_etf_hist_em, fetch_all_history=fetch_all_history)
+    stock_updated, stock_stats = _update_daily_data(get_stock_list_file(), STOCK_DATA_DIR, "更新 股票 日线数据", ak.stock_zh_a_hist, fetch_all_history=fetch_all_history)
     _fill_fundamentals_aspect(max_workers=THREAD_POOL_IO, stock_files=stock_updated, etf_files=etf_updated)
     _fill_technical_aspect(files=stock_updated + etf_updated)
+    _update_precomputed_indicators()
+
+
+def _update_precomputed_indicators():
+    all_files = list(STOCK_DATA_DIR.glob("*.csv")) + list(ETF_DATA_DIR.glob("*.csv"))
+    if not all_files:
+        return
+    print_green(f"更新预计算指标，共 {len(all_files)} 个文件")
+    updated = 0
+    for file_path in tqdm(all_files, desc="更新预计算指标", unit="个"):
+        try:
+            df = pd.read_csv(file_path, encoding="utf-8-sig")
+            if df.empty or "MA5" not in df.columns:
+                continue
+            if "MA_多头" in df.columns:
+                continue
+            df = _calculate_indicators(df)
+            df = _reorder_columns(df)
+            df.to_csv(file_path, index=False, encoding="utf-8-sig")
+            updated += 1
+        except Exception:
+            continue
+    print_green(f"预计算指标更新完成: {updated} 个文件")
 
 
 if __name__ == "__main__":
-    _update_all_data()
-    from benchmarks_load_base_data import _validate_data_completeness, _validate_all_indicators
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--recent", action="store_true", help="只获取最近40天数据")
+    args = parser.parse_args()
+    
+    fetch_all = not args.recent
+    mode = "全部历史数据" if fetch_all else "最近40天数据"
+    print(f"📊 数据更新模式: {mode}")
     print()
-    _validate_data_completeness()
-    print()
-    _validate_all_indicators()
+    
+    _update_all_data(fetch_all_history=fetch_all)
+    # from benchmarks_load_base_data import _validate_data_completeness, _validate_all_indicators
+    # print()
+    # _validate_data_completeness()
+    # print()
+    # _validate_all_indicators()
