@@ -1,11 +1,13 @@
+import array
 from datetime import date, datetime
 from typing import OrderedDict, Dict, Any
 import akshare as ak
 import pandas as pd
-import pickle
 import sys
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
+from tqdm import tqdm
+import msgpack
 
 @dataclass
 class StockDayData:
@@ -38,6 +40,97 @@ class StockDayData:
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 cache_url= Path(__file__).resolve().parent.parent / ".temp/data/cache" 
+
+def get_with_cache(file_name, func):
+    try:
+        with open(cache_url/file_name, "rb") as f:
+            data = f.read()
+            data = msgpack.unpackb(data, raw=False)
+            
+            def restore_dataframes(obj):
+                if isinstance(obj, dict):
+                    return {k: restore_dataframes(v) for k, v in obj.items()}
+                elif isinstance(obj, list) and len(obj) > 0 and isinstance(obj[0], dict):
+                    cols = list(obj[0].keys()) if obj else []
+                    if cols:
+                        return pd.DataFrame(obj, columns=cols)
+                return obj
+            
+            print(f"从缓存中读取 {file_name}")
+            return restore_dataframes(data)
+    except Exception as e:
+        print(f"读缓存{file_name}失败 原因：{e}")
+    
+    rs = func()
+    packed = msgpack.packb(rs, default=_dataclass_to_dict, use_bin_type=True)
+    with open(cache_url/file_name, "wb") as f:
+        f.write(packed)
+    print(f"写入缓存 {file_name}")
+    return rs
+
+class TradingCalendar:
+    day_dict = None
+    today = None
+    def __init__(self) -> None:
+        self.today=date.today().strftime("%Y%m%d")
+        self.day_dict = get_with_cache("trading_days.pkl",self.load)
+        
+
+    def load(self):
+        df = ak.tool_trade_date_hist_sina()
+        rs = {}
+        dates = []
+        include_today = datetime.now().hour>15
+        
+        for d in df["trade_date"]:
+            dt = d.strftime("%Y%m%d")
+            if dt <= self.today:
+                if not include_today and dt==self.today:
+                    continue
+                dates.append(dt)
+        
+        for i, date in enumerate(dates):
+            prev_day = dates[i-1] if i > 0 else "000000"
+            next_day = dates[i+1] if i < len(dates)-1 else "000000"
+            rs[date] = [prev_day, next_day]
+        
+        return rs
+
+
+    def last(self):
+        return list(self.day_dict.keys())[-1]
+
+    # 返回当前日期的前一个交易日
+    def pre(self, cur_day: str = None):
+        if cur_day is None:
+            cur_day = self.today
+        arr = self.day_dict.get(cur_day)
+        if arr:
+            return arr[0]
+        max_day = "000000"
+        for day in self.day_dict.keys():
+            if day < cur_day and day > max_day:
+                max_day = day
+        return max_day
+        
+
+    #返回当前日期的后一个交易日
+    def next(self, cur_day: str = None):
+        if cur_day is None:
+            cur_day = self.today
+        arr = self.day_dict.get(cur_day)
+        if arr:
+            return arr[1]
+        min_day = "999999"
+        for day in self.day_dict.keys():
+            if day > cur_day and day < min_day:
+                min_day = day
+        return min_day
+
+
+calendar=TradingCalendar()
+
+
 # 获取沪深股票列表
 def get_stock_list() -> pd.DataFrame:
     print("获取股票数据")
@@ -66,11 +159,11 @@ def get_stock_list() -> pd.DataFrame:
 
 # 获取股票的所有信息,返回 代码，名称，叠加上获取到的历史数据
 def get_stock_his(df: pd.DataFrame):
-    from tqdm import tqdm
     rs={}
     stock_list = df[["代码", "名称"]].values
+    last_day=calendar.last()
     for code, name in tqdm(stock_list, desc="获取股票数据"):
-        stock_df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date="20250101", end_date=date.today().strftime("%Y%m%d"))
+        stock_df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date="20250101", end_date=last_day)
         stock_df.insert(2, "名称", name)
         day_int=pd.to_datetime(stock_df["日期"]).dt.strftime("%Y%m%d")
         stock_df["日期"] = day_int
@@ -85,8 +178,6 @@ def get_stock_basic_info(dict: dict):
     print(df)
         
 
-import msgpack
-from dataclasses import asdict, fields
 
 
 def _dataclass_to_dict(obj):
@@ -101,44 +192,7 @@ def _dataclass_to_dict(obj):
     return obj
 
 
-def read_cache(file_name):
-    try:
-        with open(cache_url/file_name, "rb") as f:
-            data = f.read()
-            try:
-                data = msgpack.unpackb(data, raw=False)
-            except:
-                data = pickle.loads(data)
-            
-            def restore_dataframes(obj):
-                if isinstance(obj, dict):
-                    return {k: restore_dataframes(v) for k, v in obj.items()}
-                elif isinstance(obj, list) and len(obj) > 0 and isinstance(obj[0], dict):
-                    cols = list(obj[0].keys()) if obj else []
-                    if cols:
-                        return pd.DataFrame(obj, columns=cols)
-                return obj
-            
-            return restore_dataframes(data)
-    except Exception as e:
-        print(f"读缓存{file_name}失败 原因：{e}")
-        return None
 
-
-def write_cache(file_name, data):
-    packed = msgpack.packb(data, default=_dataclass_to_dict, use_bin_type=True)
-    with open(cache_url/file_name, "wb") as f:
-        f.write(packed)
-
-def get_with_cache(file_name, func):
-    rs = read_cache(file_name)
-    if rs is None:
-        rs = func()
-        write_cache(file_name, rs)
-        print(f"写入缓存 {file_name}")
-    else:
-        print(f"从缓存中读取 {file_name}")
-    return rs
 
 
 #计算技术指标
@@ -215,6 +269,8 @@ def cslc_index(dict: dict):
     return dict2
 
 def get_all_data() -> Dict[str, Dict[int, StockDayData]]:
+    return get_with_cache("cslc_index.pkl", lambda: cslc_index({}))
+
     # 取股票列表
     df=get_with_cache("get_stock_list.pkl", get_stock_list)
     # 取股票历史数据
@@ -230,143 +286,66 @@ def get_all_data() -> Dict[str, Dict[int, StockDayData]]:
     return dict
 
 
-def pick_stock(dict: Dict[str, Dict[str, StockDayData]], day: str, filters: list) -> list:
+def pick_stock(dict: Dict[str, Dict[str, StockDayData]], day: str, strategy: str) -> list:
     rs_list=[]
+    print(f"dict数量:{len(dict.keys())}")
+    print(f"过滤策略:{strategy}")
     for code, data in dict.items():
         info=data.get(day)
         if info is None:
+            print(f"股票{code} 日期{day},没有信息，跳过")
             continue
         # 过滤逻辑
         flag=True
-        for f in filters:
-            if f=="量价多头":
-                if info.volume_trend==False:
-                    flag=False
-                    break
-                if info.pe<=0:
-                    flag=False
-                    break
-                if info.market_cap<=100:
-                    flag=False
-                    break
-                if info.change_pct >= 5 or info.change_pct <= -3 or info.turnover_rate<=5:
-                    flag=False
-                    break
-                if info.change_3d<=1:
-                    flag=False
-                    break
-                if info.change_5d<=3:
-                    flag=False
-                    break
-            # PE合理范围 (5-80)
-                if info.pe < 5 or info.pe > 80:
-                    flag=False
-                    break
-            # PB不过高 (< 10)
-                if info.pb >= 10:
-                    flag=False
-                    break
-            # 量能充沛 (量比 > 1.5)
-                if info.volume_ratio <= 1.5:
-                    flag=False
-                    break
-            # 近期涨幅适中 (10日涨幅 < 30%)
-                if info.change_10d >= 30:
-                    flag=False
-                    break
-            # 波动适中 (振幅 < 10%)
-                if info.amplitude >= 10:
-                    flag=False
-                    break
-            # 收盘价 > 10元 (避免仙股)
-                if info.close <= 10:
-                    flag=False
-                    break
-            # 换手率适中 (3% < 换手率 < 30%)
-                if info.turnover_rate <= 3 or info.turnover_rate >= 30:
-                    flag=False
-                    break
-            # 成长股筛选 (PE 20-60, 量比 > 1.5)
-                if info.pe < 20 or info.pe > 60:
-                    flag=False
-                    break
-                if info.volume_ratio <= 1.5:
-                    flag=False
-                    break
-                if info.change_10d >= 20:
-                    flag=False
-                    break
-            # 价值股筛选 (PE 5-25, PB < 3, 中大市值)
-                if info.pe < 5 or info.pe > 25:
-                    flag=False
-                    break
-                if info.pb >= 3:
-                    flag=False
-                    break
-                if info.market_cap <= 200:
-                    flag=False
-                    break
+        if strategy=="量价多头":
+            flag = flag and info["volume_trend"]==True 
+            # and info.pe>0 and info.market_cap>100 and info.change_pct<5 and info.change_pct>1 and info.turnover_rate>5 
+            # print(flag)
+            # flag = flag and info.change_3d>1 and info.change_5d>3 and info.pe>5 and info.pe<80 and info.pb<10 
         
         if flag:
             rs_list.append(info)
+        if len(rs_list)>=5:
+            break
     for f in rs_list:
-        f.print()
+        print(f)
     print(f"日期{day} 选股数量{len(rs_list)}")
     return rs_list
 
 
 
-class TradingCalendar:
-    day_dict = None
-    def __init__(self) -> None:
-        self.day_dict = get_with_cache("trading_days",self.load)
+@dataclass
+class info:
+    # 日期
+    day:str
+    # 持仓
+    hold:array
+    # 买入
+    buy:array
+    # 卖出
+    sell:array
+    def get_stock(self,dict,strategy):
+        pick_stock(dict,day,strategy)
     
-    def load(self):
-        today = date.today().strftime("%Y%m%d")
-        df = ak.tool_trade_date_hist_sina()
-        rs = OrderedDict()
-        pre = 0
-        include_today = datetime.now().hour>15
-        for d in df["trade_date"]:
-            dt = d.strftime("%Y%m%d")
-            if dt <= today:
-                if not include_today and dt==today:
-                    continue
-                rs[dt]=pre
-                pre=dt
-        return rs
 
 
-    def all(self):
-        print(self.day_dict.keys())
-    def last(self):
-        return list(self.day_dict.keys())[-1]
+def back_test(start:str="20260101",end:str="20260115"):
+    # 昨天的信息
+    # yestoday_info=info()
+    pass
 
 
 if __name__ == "__main__":
-    # dict=get_all_data()
-    # stock_list=pick_stock(dict, 20260116,["量价多头"])
+    dict=get_all_data()
+    stock_list=pick_stock(dict, "20260116","量价多头")
     # print(stock_list)
+
+    # back_test()
     
-    calendar=TradingCalendar()
-    # calendar.all()
+    # calendar=TradingCalendar()
+    # print(calendar.pre("20260102"))
+    # print(calendar.next("20260102"))
     # print(calendar.last())
-
-
-
-
-
-# # 到今天前到有效交易日 包含今天
-# def get_trading_days(days: int = None) -> OrderedDict:
-#     today = int(date.today().strftime("%Y%m%d"))
-#     df = ak.tool_trade_date_hist_sina()
-#     rs = OrderedDict()
-#     pre = 0
-#     for d in df["trade_date"]:
-#         dt = int(d.strftime("%Y%m%d"))
-#         if dt <= today:
-#             rs[dt]=pre
-#             pre=dt
-#     return rs
+    # print(calendar.last())
 
 
