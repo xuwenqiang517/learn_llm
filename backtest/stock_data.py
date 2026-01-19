@@ -9,6 +9,19 @@ from dataclasses import dataclass, fields
 from tqdm import tqdm
 import msgpack
 
+
+def print_green(msg):
+    print(f"\033[92m{msg}\033[0m")
+
+def print_red(msg):
+    print(f"\033[91m{msg}\033[0m")
+
+def print_yellow(msg):
+    print(f"\033[93m{msg}\033[0m")
+
+def print_blue(msg):
+    print(f"\033[94m{msg}\033[0m")
+
 @dataclass
 class StockDayData:
     date: str
@@ -35,7 +48,10 @@ class StockDayData:
     circulating_market_cap: float
     def toString(self):
         # print(f"日期{self.date} 股票{self.code} {self.name} 开盘{self.open} 收盘{self.close} 最高{self.high} 最低{self.low} 成交量{self.volume} 成交额{self.amount} 振幅{self.amplitude} 涨跌幅{self.change_pct} 涨跌{self.change} 换手率{self.turnover_rate} 3日涨跌{self.change_3d} 5日涨跌{self.change_5d} 10日涨跌{self.change_10d} 量比{self.volume_ratio} 量价多头{self.volume_trend} PE{self.pe} PB{self.pb} 总市值{self.market_cap} 流通市值{self.circulating_market_cap}")
-        return f"日期:{self.date} {self.code} {self.name} 开盘{self.open} 收盘{self.close} 成交量{self.volume} 涨跌幅{self.change_pct} 涨跌{self.change} 换手率{self.turnover_rate} 量比{self.volume_ratio} 量价多头{self.volume_trend} PE{self.pe} PB{self.pb} 总市值"
+        # return f"日期:{self.date} {self.code} {self.name} 开盘{self.open} 收盘{self.close} 成交量{self.volume} 涨跌幅{self.change_pct} 涨跌{self.change} 换手率{self.turnover_rate} 量比{self.volume_ratio} 量价多头{self.volume_trend} PE{self.pe} PB{self.pb} 3日涨跌{self.change_3d} 5日涨跌{self.change_5d}"
+        return f"开盘{self.open} 收盘{self.close} 成交量{self.volume} 涨跌幅{self.change_pct} 涨跌{self.change} 换手率{self.turnover_rate} 量比{self.volume_ratio} 量价多头{self.volume_trend} PE{self.pe} PB{self.pb} 3日涨跌{self.change_3d} 5日涨跌{self.change_5d}"
+    def full_info(self):
+        return f"日期:{self.date} {self.code} {self.name} 开盘{self.open} 收盘{self.close} 成交量{self.volume} 涨跌幅{self.change_pct} 涨跌{self.change} 换手率{self.turnover_rate} 量比{self.volume_ratio} 量价多头{self.volume_trend} PE{self.pe} PB{self.pb} 3日涨跌{self.change_3d} 5日涨跌{self.change_5d}"
 
     def __hash__(self):
         return hash(self.code)
@@ -70,6 +86,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 cache_url= Path(__file__).resolve().parent.parent / ".temp/data/cache" 
 
 def get_with_cache(file_name, func):
+    start_time=datetime.now()
     try:
         with open(cache_url/file_name, "rb") as f:
             data = f.read()
@@ -83,7 +100,7 @@ def get_with_cache(file_name, func):
                         return pd.DataFrame(obj, columns=cols)
                 return obj
             
-            print(f"从缓存中读取 {file_name}")
+            print(f"从缓存中读取 {file_name} 耗时：{datetime.now()-start_time}ms")
             return _dict_to_dataclass(restore_dataframes(data))
     except Exception as e:
         print(f"读缓存{file_name}失败 原因：{e}")
@@ -92,7 +109,7 @@ def get_with_cache(file_name, func):
     packed = msgpack.packb(rs, default=_dataclass_to_dict, use_bin_type=True)
     with open(cache_url/file_name, "wb") as f:
         f.write(packed)
-    print(f"写入缓存 {file_name}")
+    print(f"写入缓存 {file_name} 耗时：{datetime.now()-start_time}ms")
     return rs
 
 class TradingCalendar:
@@ -165,33 +182,33 @@ def get_stock_list() -> pd.DataFrame:
     stock_sh=stock_sh[["证券代码", "证券简称"]]
     stock_sh.columns = ["代码", "名称"]
 
-    print("上海主板A股数量：", len(stock_sh))
+    # print("上海主板A股数量：", len(stock_sh))
     stock_sz = ak.stock_info_sz_name_code(symbol="A股列表")
     stock_sz=stock_sz[["A股代码", "A股简称"]]
     stock_sz.columns = ["代码", "名称"]
-    print("深圳A股列表数量：", len(stock_sz))
+    # print("深圳A股列表数量：", len(stock_sz))
     all = stock_sh._append(stock_sz, ignore_index=True)
-    print("合并后总股票数量：", len(all))
+    # print("合并后总股票数量：", len(all))
 
     # 过滤掉科创/创业股票
     all = all[~all["代码"].str.startswith(("688", "300", "301"))]
-    print("过滤科创/创业股票后数量：", len(all))
+    # print("过滤科创/创业股票后数量：", len(all))
 
     # 过滤掉ST股票
     all = all[~all["名称"].str.contains("ST")]
-    print("过滤ST股票后数量：", len(all))
-
+    # print("过滤ST股票后数量：", len(all))
+    print(f"获取股票数量：{len(all)}")
     # return all.head(20)
     return all
 
 
 # 获取股票的所有信息,返回 代码，名称，叠加上获取到的历史数据
-def get_stock_his(df: pd.DataFrame):
+def get_stock_his(df: pd.DataFrame, start_date: str = "20100101", end_date: str = None):
     rs={}
     stock_list = df[["代码", "名称"]].values
-    last_day=calendar.last()
+    print(f"获取股票历史数据:{start_date} - {end_date}")
     for code, name in tqdm(stock_list, desc="获取股票数据"):
-        stock_df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date="20100101", end_date=last_day)
+        stock_df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date=start_date, end_date=end_date)
         stock_df.insert(2, "名称", name)
         day_int=pd.to_datetime(stock_df["日期"]).dt.strftime("%Y%m%d")
         stock_df["日期"] = day_int
@@ -279,17 +296,18 @@ def cslc_index(dict: dict):
             )
     return dict2
 
-def get_all_data() -> Dict[str, Dict[str, StockDayData]]:
+def get_all_data(start_date="20250901") -> Dict[str, Dict[str, StockDayData]]:
     # 取股票列表
     df=get_with_cache("get_stock_list.pkl", get_stock_list)
     # 取股票历史数据
-    dict=get_with_cache("get_stock_his.pkl", lambda: get_stock_his(df))
+    end_date=calendar.last()
+    dict=get_with_cache(f"get_stock_his_{start_date}_{end_date}.pkl", lambda: get_stock_his(df, start_date=start_date, end_date=end_date))
     # 计算技术指标
-    dict=get_with_cache("calc_tech_indicators.pkl", lambda: calc_tech_indicators(dict))
+    dict=get_with_cache(f"calc_tech_indicators_{start_date}_{end_date}.pkl", lambda: calc_tech_indicators(dict))
     # 基本面指标
-    dict=get_with_cache("calc_basic_indicators.pkl", lambda: calc_basic_indicators(dict))
+    dict=get_with_cache(f"calc_basic_indicators_{start_date}_{end_date}.pkl", lambda: calc_basic_indicators(dict))
     # 转换成二级索引
-    dict=get_with_cache("cslc_index.pkl", lambda: cslc_index(dict))
+    dict=get_with_cache(f"cslc_index_{start_date}_{end_date}.pkl", lambda: cslc_index(dict))
 
     print(f"股票数量: {len(dict)}")
     return dict
@@ -307,17 +325,17 @@ def pick_stock(dict: Dict[str, Dict[str, StockDayData]], day: str, strategy: str
         # 过滤逻辑
         flag=True
         if strategy=="量价多头":
-            flag = flag and info.pe>0 and info.market_cap>100 and info.change_pct<5 and info.change_pct>2 and info.turnover_rate>5 
-            flag = flag and info.change_3d>3 and info.change_5d>10 and info.pe>5 and info.pe<80 and info.pb<10
-        
+            flag = flag and info.pe>0 and info.market_cap>100 and info.change_pct<5 and info.change_pct>3 and info.turnover_rate>20
+            flag = flag and info.change_3d>5 and info.change_5d>10
         if flag:
             rs_list.append(info)
-        if len(rs_list)>=5:
-            break
+        # if len(rs_list)>=5:
+        #     break
+    print(f"日期{day} 选股数量{len(rs_list)}")
     # for f in rs_list:
     #     print(f)
     # print(f"日期{day} 选股数量{len(rs_list)}")
-    return rs_list
+    return rs_list[:5]
 
 
 
@@ -350,7 +368,7 @@ class BuySellInfo:
         return round(self.count*self.sell_price, 2)
     # 盈亏率
     def profit_rate(self):
-        return round(self.sell_value()/self.buy_value()-1, 2)
+        return round((self.sell_value()/self.buy_value()-1)*100, 2)
     # 盈亏金额
     def profit_amount(self):
         return round(self.sell_value()-self.buy_value(), 2)
@@ -359,24 +377,24 @@ class BuySellInfo:
         return round(self.close*self.count, 2)      
     # 持有收益率
     def hold_profit_rate(self):
-        return round(self.hold_value()/self.buy_value()-1, 2)
+        return round((self.hold_value()/self.buy_value()-1)*100, 2)
 
         
     def buy_string(self):
-        print(f"股票{self.code} {self.name} 买入日期{self.buy_day} 买入价格{self.buy_price}  股数:{self.count}  买入金额{self.buy_value()}")
+        return f"股票{self.code} {self.name} 买入:{self.buy_day} 买入价：{self.buy_price} 股数:{self.count} 金额{self.buy_value()}"
 
     def sell_string(self):
-        print(f"股票{self.code} {self.name} 买入日期{self.buy_day} 买入价格{self.buy_price} 卖出日期{self.sell_day} 卖出价格{self.sell_price} 股数:{self.count} 持仓天数:{self.hold_day}  累计涨跌幅:{self.profit_rate()}  盈亏:{self.profit_amount()}")
+        return f"股票{self.code} {self.name} 时间:{self.buy_day}-{self.sell_day}（{self.hold_day}天） 价格:{self.buy_price} -> {self.sell_price} 涨跌幅:{self.profit_rate()}%  盈亏:{self.profit_amount()}  卖出原因:{self.sell_reason}"
     
     def hold_string(self):
-        return f"股票{self.code} {self.name} 买入日期{self.buy_day} 买入价格{self.buy_price}  股数:{self.count}  持仓天数:{self.hold_day}  持仓金额{self.hold_value()}  持仓收益率{self.hold_profit_rate()}"
+        return f"股票{self.code} {self.name} 买入:{self.buy_day} 买入价:{self.buy_price} 收盘价:{self.close} 持仓:{self.hold_day}天  持仓收益率{self.hold_profit_rate()}% 盈亏:{self.profit_amount()}"
 
 
 
 def get_data(data_dict:Dict[str, Dict[str, StockDayData]]=None,code:str=None,day:str=None)->StockDayData:
     return data_dict.get(code).get(day) if data_dict.get(code) is not None else None
 
-def back_test(start:str="20260101",end:str="20260115",data_dict:Dict[str, Dict[str, StockDayData]]=None,base_total_amount:float=100000.00,buy_count:int=10000,max_hold_count:int=10):
+def back_test(start:str="20260101",end:str="20260119",data_dict:Dict[str, Dict[str, StockDayData]]=None,base_total_amount:float=100000.00,buy_count:int=10000,max_hold_count:int=10):
     # 昨天的信息
     calendar
     pre_day=calendar.pre(start)
@@ -390,14 +408,12 @@ def back_test(start:str="20260101",end:str="20260115",data_dict:Dict[str, Dict[s
     total_amount=base_total_amount
     
     while cur_day<end:
-        print("="*60+f"今天:{cur_day}"+ "="*60)
-        # 根据上一个交易日选出来的票
+        print("="*80+f"今天:{cur_day}"+ "="*80)
         #选票
-        print(f"{pre_day} 选票:=========")
+        print(f"选票:=========")
         stock_list=pick_stock(data_dict,pre_day,"量价多头")
         for stock in stock_list:
-            print(stock.toString())
-
+            print_blue(stock.full_info())
         # 判断卖出
         print(f"{cur_day} 卖出:=========")
         sell_list=[]
@@ -411,19 +427,19 @@ def back_test(start:str="20260101",end:str="20260115",data_dict:Dict[str, Dict[s
             sell_flag=False
             if(stock_info_pre.change_pct<-5):
                 sell_flag=True
-                trade_info.sell_reason="涨跌幅<-5%"
-            elif trade_info.hold_day>=3 and trade_info.hold_profit_rate()<0.05:
+                trade_info.sell_reason="[1]涨跌幅<-5%"
+            elif trade_info.hold_day>=3 and trade_info.hold_profit_rate()<5:
                 sell_flag=True
-                trade_info.sell_reason=f"持仓{trade_info.hold_day}天,收益率:"+f"{trade_info.hold_profit_rate()}%,<5%"
-            elif trade_info.hold_day>=5 and trade_info.hold_profit_rate()<0.10:
+                trade_info.sell_reason=f"[2]持仓{trade_info.hold_day}天,收益率:"+f"{trade_info.hold_profit_rate()}%,<5%"
+            elif trade_info.hold_day>=5 and trade_info.hold_profit_rate()<10:
                 sell_flag=True
-                trade_info.sell_reason=f"持仓{trade_info.hold_day}天,收益率:"+f"{trade_info.hold_profit_rate()}%,<10%"
+                trade_info.sell_reason=f"[3]持仓{trade_info.hold_day}天,收益率:"+f"{trade_info.hold_profit_rate()}%,<10%"
             elif trade_info.hold_day>=10:
                 sell_flag=True
-                trade_info.sell_reason=f"持仓{trade_info.hold_day}天,收益率:"+f"{trade_info.hold_profit_rate()}%"
-            elif trade_info.hold_profit_rate()>=0.20:
+                trade_info.sell_reason=f"[4]持仓{trade_info.hold_day}天,收益率:"+f"{trade_info.hold_profit_rate()}%"
+            elif trade_info.hold_profit_rate()>=20:
                 sell_flag=True
-                trade_info.sell_reason=f"持仓{trade_info.hold_day}天,收益率:"+f"{trade_info.hold_profit_rate()}%"
+                trade_info.sell_reason=f"[5]持仓{trade_info.hold_day}天,收益率:"+f"{trade_info.hold_profit_rate()}%,>=20%"
             
             # 确认要卖
             if sell_flag:
@@ -437,7 +453,7 @@ def back_test(start:str="20260101",end:str="20260115",data_dict:Dict[str, Dict[s
         for stock in sell_list:
             hold_set.remove(stock)
             trade=dict_info[stock.code]
-            trade.sell_string()
+            print_red(trade.sell_string())
             dict_info.pop(stock.code)
 
         # 判断买入
@@ -460,12 +476,12 @@ def back_test(start:str="20260101",end:str="20260115",data_dict:Dict[str, Dict[s
                 buy_list.append(stock)
                 trade=BuySellInfo(code=stock.code,name=stock.name,buy_day=cur_day,buy_price=stock_info_cur.open,sell_price=0.0,count=count)
                 dict_info[stock.code]=trade
-                trade.buy_string()
+                print_green(f"{trade.buy_string()} || {stock_info_cur.toString()}")
                 # 金额处理
                 total_amount-=trade.buy_value()
 
 
-        print(f"{cur_day} 持仓:=========")
+        print_yellow(f"{cur_day} 持仓:=========")
         hold_value=0
         for stock in hold_set:
             stock_info_cur=get_data(data_dict,stock.code,cur_day)
@@ -478,7 +494,7 @@ def back_test(start:str="20260101",end:str="20260115",data_dict:Dict[str, Dict[s
             # 更新持仓金额
             hold_value+=trade_info.hold_value()
             trade_info.hold_day+=1
-            print(f"{trade_info.hold_string()}  {stock_info_cur.toString()}")
+            print_yellow(f"{trade_info.hold_string()} ||{stock_info_cur.toString()}")
             
             
             
@@ -494,7 +510,12 @@ def back_test(start:str="20260101",end:str="20260115",data_dict:Dict[str, Dict[s
 
 
 if __name__ == "__main__":
-    data_dict=get_all_data()
+    start_date="20250101"
+    data_dict=get_all_data(start_date=start_date)
     # stock_list=pick_stock(data_dict, "20260116","量价多头")
-    back_test(data_dict=data_dict,start="20250101",end="20260115")
+    back_test(data_dict=data_dict,start=start_date,end="20260119")
 
+
+
+# pick_stock
+# back_test
