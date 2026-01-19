@@ -1,5 +1,4 @@
-from datetime import date
-import imp
+from datetime import date, datetime
 from typing import OrderedDict, Dict, Any
 import akshare as ak
 import pandas as pd
@@ -8,10 +7,9 @@ import sys
 from pathlib import Path
 from dataclasses import dataclass
 
-
 @dataclass
 class StockDayData:
-    date: int
+    date: str
     code: str
     name: str
     open: float
@@ -74,7 +72,7 @@ def get_stock_his(df: pd.DataFrame):
     for code, name in tqdm(stock_list, desc="获取股票数据"):
         stock_df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date="20250101", end_date=date.today().strftime("%Y%m%d"))
         stock_df.insert(2, "名称", name)
-        day_int=pd.to_datetime(stock_df["日期"]).dt.strftime("%Y%m%d").astype(int)
+        day_int=pd.to_datetime(stock_df["日期"]).dt.strftime("%Y%m%d")
         stock_df["日期"] = day_int
         rs[code] = stock_df
     return rs
@@ -122,7 +120,8 @@ def read_cache(file_name):
                 return obj
             
             return restore_dataframes(data)
-    except:
+    except Exception as e:
+        print(f"读缓存{file_name}失败 原因：{e}")
         return None
 
 
@@ -231,7 +230,7 @@ def get_all_data() -> Dict[str, Dict[int, StockDayData]]:
     return dict
 
 
-def pick_stock(dict: Dict[str, Dict[int, StockDayData]], day: int, filters: list) -> list:
+def pick_stock(dict: Dict[str, Dict[str, StockDayData]], day: str, filters: list) -> list:
     rs_list=[]
     for code, data in dict.items():
         info=data.get(day)
@@ -315,7 +314,59 @@ def pick_stock(dict: Dict[str, Dict[int, StockDayData]], day: int, filters: list
     print(f"日期{day} 选股数量{len(rs_list)}")
     return rs_list
 
+
+
+class TradingCalendar:
+    day_dict = None
+    def __init__(self) -> None:
+        self.day_dict = get_with_cache("trading_days",self.load)
+    
+    def load(self):
+        today = date.today().strftime("%Y%m%d")
+        df = ak.tool_trade_date_hist_sina()
+        rs = OrderedDict()
+        pre = 0
+        include_today = datetime.now().hour>15
+        for d in df["trade_date"]:
+            dt = d.strftime("%Y%m%d")
+            if dt <= today:
+                if not include_today and dt==today:
+                    continue
+                rs[dt]=pre
+                pre=dt
+        return rs
+
+
+    def all(self):
+        print(self.day_dict.keys())
+    def last(self):
+        return list(self.day_dict.keys())[-1]
+
+
 if __name__ == "__main__":
-    dict=get_all_data()
-    stock_list=pick_stock(dict, 20260116,["量价多头"])
+    # dict=get_all_data()
+    # stock_list=pick_stock(dict, 20260116,["量价多头"])
     # print(stock_list)
+    
+    calendar=TradingCalendar()
+    # calendar.all()
+    # print(calendar.last())
+
+
+
+
+
+# # 到今天前到有效交易日 包含今天
+# def get_trading_days(days: int = None) -> OrderedDict:
+#     today = int(date.today().strftime("%Y%m%d"))
+#     df = ak.tool_trade_date_hist_sina()
+#     rs = OrderedDict()
+#     pre = 0
+#     for d in df["trade_date"]:
+#         dt = int(d.strftime("%Y%m%d"))
+#         if dt <= today:
+#             rs[dt]=pre
+#             pre=dt
+#     return rs
+
+
