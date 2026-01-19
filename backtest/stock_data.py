@@ -191,7 +191,7 @@ def get_stock_his(df: pd.DataFrame):
     stock_list = df[["代码", "名称"]].values
     last_day=calendar.last()
     for code, name in tqdm(stock_list, desc="获取股票数据"):
-        stock_df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date="20250101", end_date=last_day)
+        stock_df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date="20100101", end_date=last_day)
         stock_df.insert(2, "名称", name)
         day_int=pd.to_datetime(stock_df["日期"]).dt.strftime("%Y%m%d")
         stock_df["日期"] = day_int
@@ -337,7 +337,10 @@ class BuySellInfo:
     count: int = 0
     #每日收盘
     close:float = 0.0
-    
+    # 持仓天数(包括买入天)
+    hold_day:int = 0
+    # 卖出原因
+    sell_reason:str = ""
 
     # 买入金额
     def buy_value(self):
@@ -354,20 +357,26 @@ class BuySellInfo:
     # 持仓金额
     def hold_value(self):
         return round(self.close*self.count, 2)      
+    # 持有收益率
+    def hold_profit_rate(self):
+        return round(self.hold_value()/self.buy_value()-1, 2)
 
-    
+        
     def buy_string(self):
         print(f"股票{self.code} {self.name} 买入日期{self.buy_day} 买入价格{self.buy_price}  股数:{self.count}  买入金额{self.buy_value()}")
 
     def sell_string(self):
-        print(f"股票{self.code} {self.name} 买入日期{self.buy_day} 买入价格{self.buy_price} 卖出日期{self.sell_day} 卖出价格{self.sell_price} 股数:{self.count} 累计涨跌幅:{self.profit_rate()}  盈亏:{self.profit_amount()}")
+        print(f"股票{self.code} {self.name} 买入日期{self.buy_day} 买入价格{self.buy_price} 卖出日期{self.sell_day} 卖出价格{self.sell_price} 股数:{self.count} 持仓天数:{self.hold_day}  累计涨跌幅:{self.profit_rate()}  盈亏:{self.profit_amount()}")
+    
+    def hold_string(self):
+        return f"股票{self.code} {self.name} 买入日期{self.buy_day} 买入价格{self.buy_price}  股数:{self.count}  持仓天数:{self.hold_day}  持仓金额{self.hold_value()}  持仓收益率{self.hold_profit_rate()}"
 
 
 
 def get_data(data_dict:Dict[str, Dict[str, StockDayData]]=None,code:str=None,day:str=None)->StockDayData:
     return data_dict.get(code).get(day) if data_dict.get(code) is not None else None
 
-def back_test(start:str="20260101",end:str="20260115",data_dict:Dict[str, Dict[str, StockDayData]]=None,base_total_amount:float=100000.00,buy_count:int=10000):
+def back_test(start:str="20260101",end:str="20260115",data_dict:Dict[str, Dict[str, StockDayData]]=None,base_total_amount:float=100000.00,buy_count:int=10000,max_hold_count:int=10):
     # 昨天的信息
     calendar
     pre_day=calendar.pre(start)
@@ -398,9 +407,27 @@ def back_test(start:str="20260101",end:str="20260115",data_dict:Dict[str, Dict[s
             if stock_info_pre is None or stock_info_cur is None:
                 print(f"股票{stock.code} 日期{cur_day},没有信息，跳过")
                 continue
+            trade_info=dict_info[stock.code]
+            sell_flag=False
             if(stock_info_pre.change_pct<-5):
+                sell_flag=True
+                trade_info.sell_reason="涨跌幅<-5%"
+            elif trade_info.hold_day>=3 and trade_info.hold_profit_rate()<0.05:
+                sell_flag=True
+                trade_info.sell_reason=f"持仓{trade_info.hold_day}天,收益率:"+f"{trade_info.hold_profit_rate()}%,<5%"
+            elif trade_info.hold_day>=5 and trade_info.hold_profit_rate()<0.10:
+                sell_flag=True
+                trade_info.sell_reason=f"持仓{trade_info.hold_day}天,收益率:"+f"{trade_info.hold_profit_rate()}%,<10%"
+            elif trade_info.hold_day>=10:
+                sell_flag=True
+                trade_info.sell_reason=f"持仓{trade_info.hold_day}天,收益率:"+f"{trade_info.hold_profit_rate()}%"
+            elif trade_info.hold_profit_rate()>=0.20:
+                sell_flag=True
+                trade_info.sell_reason=f"持仓{trade_info.hold_day}天,收益率:"+f"{trade_info.hold_profit_rate()}%"
+            
+            # 确认要卖
+            if sell_flag:
                 sell_list.append(stock)
-                trade_info=dict_info[stock.code]
                 trade_info.sell_price=stock_info_cur.open
                 trade_info.sell_day=cur_day
                 # 金额处理
@@ -417,14 +444,21 @@ def back_test(start:str="20260101",end:str="20260115",data_dict:Dict[str, Dict[s
         print(f"{cur_day} 买入:=========")
         buy_list=[]
         for stock in stock_list:
-            if(len(hold_set)<5) and stock not in hold_set:
+            if(len(hold_set)<max_hold_count) and stock not in hold_set:
                 stock_info_cur=get_data(data_dict,stock.code,cur_day)
                 if stock_info_cur is None:
                     print(f"股票{stock.code} 日期{cur_day},没有信息，跳过")
                     continue
+                count = int(buy_count / stock_info_cur.open) // 100 * 100
+                if count == 0:
+                    print(f"股票{stock.code} 股价{stock_info_cur.open}过高，无法买入，跳过")
+                    continue
+                if total_amount<count*stock_info_cur.open:
+                    print(f"股票{stock.code} 资金不足，无法买入，跳过")
+                    continue
                 hold_set.add(stock)
                 buy_list.append(stock)
-                trade=BuySellInfo(code=stock.code,name=stock.name,buy_day=cur_day,buy_price=stock_info_cur.open,sell_price=0.0,count=(buy_count/stock_info_cur.open)//100*100)
+                trade=BuySellInfo(code=stock.code,name=stock.name,buy_day=cur_day,buy_price=stock_info_cur.open,sell_price=0.0,count=count)
                 dict_info[stock.code]=trade
                 trade.buy_string()
                 # 金额处理
@@ -435,14 +469,19 @@ def back_test(start:str="20260101",end:str="20260115",data_dict:Dict[str, Dict[s
         hold_value=0
         for stock in hold_set:
             stock_info_cur=get_data(data_dict,stock.code,cur_day)
-            print(stock_info_cur.toString())
-            code=stock.code
-            trade_info=dict_info[code]
-            
+            if stock_info_cur is None:
+                print(f"股票{stock.code} 日期{cur_day},没有信息，跳过")
+                continue
+            trade_info=dict_info[stock.code]
             # 更新今天的收盘价
             trade_info.close=stock_info_cur.close
             # 更新持仓金额
             hold_value+=trade_info.hold_value()
+            trade_info.hold_day+=1
+            print(f"{trade_info.hold_string()}  {stock_info_cur.toString()}")
+            
+            
+            
         
         print(f"{cur_day} 空闲金额:{total_amount}")
         print(f"{cur_day} 持仓金额:{hold_value}")
