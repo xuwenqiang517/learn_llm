@@ -27,9 +27,9 @@ class StockDayData:
     consecutive_up_days: int
 
     def toString(self):
-        return f"开盘{self.open} 收盘{self.close} 成交量{self.volume} 涨跌幅{self.change_pct} 涨跌{self.change} 换手率{self.turnover_rate} 量比{self.volume_ratio} PE{self.pe} PB{self.pb} 量价多头{self.volume_trend} 连涨天数{self.consecutive_up_days} 3日涨跌{self.change_3d} 5日涨跌{self.change_5d}"
+        return f"[stock_daily]开{self.open} 收{self.close} 涨跌幅:{self.change_pct} 涨跌:{self.change} 换手率:{self.turnover_rate} 量比:{self.volume_ratio} PE:{self.pe} PB:{self.pb} 多头:{self.volume_trend} 连涨:{self.consecutive_up_days} 3日:{self.change_3d} 5日:{self.change_5d}"
     def full_info(self):
-        return f"日期:{self.date} {self.code} {self.name} 开盘{self.open} 收盘{self.close} 成交量{self.volume} 涨跌幅{self.change_pct} 涨跌{self.change} 换手率{self.turnover_rate} PE{self.pe} PB{self.pb} 量比{self.volume_ratio} 量价多头{self.volume_trend} 连涨天数{self.consecutive_up_days} 3日涨跌{self.change_3d} 5日涨跌{self.change_5d}"
+        return f"[stock_daily_full]日期:{self.date} {self.code} {self.name} {self.open}->{self.close} 涨跌幅:{self.change_pct} 涨跌:{self.change} 换手率:{self.turnover_rate} PE:{self.pe} PB:{self.pb} 量比:{self.volume_ratio} 多头:{self.volume_trend} 连涨:{self.consecutive_up_days} 3日:{self.change_3d} 5日:{self.change_5d}"
 
     def __hash__(self):
         return hash(self.code)

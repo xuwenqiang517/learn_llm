@@ -13,34 +13,39 @@ class BuySellInfo:
     hold_day: int = 0
     sell_reason: str = ""
 
-    def buy_value(self):
+    # 买入金额
+    def buy_amount(self):
         return round(self.count * self.buy_price, 2)
 
-    def sell_value(self):
+    # 卖出金额
+    def sell_amount(self):
         return round(self.count * self.sell_price, 2)
 
+    # 收益率
     def profit_rate(self):
-        return round((self.sell_value() / self.buy_value() - 1) * 100, 2)
-
+        if self.sell_price>0:
+            return round((self.sell_amount() / self.buy_amount() - 1) * 100, 2)
+        else:
+            return round((self.hold_amount() / self.buy_amount() - 1) * 100, 2)
+    # 收益金额
     def profit_amount(self):
         if self.sell_price > 0:
-            return round(self.sell_value() - self.buy_value(), 2)
+            return round(self.sell_amount() - self.buy_amount(), 2)
         else:
-            return round(self.hold_value() - self.buy_value(), 2)
-
-    def hold_value(self):
+            return round(self.hold_amount() - self.buy_amount(), 2)
+    # 止损价
+    def stop_price(self,rate:float=0.05):
+        return self.buy_price * (1 - rate)
+    # 持仓金额
+    def hold_amount(self):
         return round(self.close * self.count, 2)
 
-    def hold_profit_rate(self):
-        if self.buy_value() == 0:
-            return 0.0
-        return round((self.hold_value() / self.buy_value() - 1) * 100, 2)
 
     def buy_string(self):
-        return f"股票{self.code} {self.name} 买入:{self.buy_day} 买入价：{self.buy_price} 股数:{self.count} 金额{self.buy_value()}"
+        return f"[buy_string]{self.name} 买入:{self.buy_day} 买入价：{self.buy_price} "
 
     def sell_string(self):
-        return f"股票{self.code} {self.name} 时间:{self.buy_day}-{self.sell_day}（{self.hold_day}天） 价格:{self.buy_price} -> {self.sell_price} 涨跌幅:{self.profit_rate()}% 盈亏:{self.profit_amount()}  卖出原因:{self.sell_reason}"
+        return f"[sell_string]{self.name} 日期:{self.buy_day}->{self.sell_day}（{self.hold_day}天 价格:{self.buy_price}->{self.sell_price} 涨跌幅:{self.profit_rate()}% 盈亏:{self.profit_amount()}  卖出原因:{self.sell_reason}"
 
     def hold_string(self):
-        return f"股票{self.code} {self.name} 买入:{self.buy_day} 买入价:{self.buy_price} 收盘价:{self.close} 持仓:{self.hold_day}天  持仓收益率{self.hold_profit_rate()}% 盈亏:{self.profit_amount()}"
+        return f"[hold_string]{self.name} 买入:{self.buy_price}({self.buy_day}) 持仓:{self.hold_day}天  收益率{self.profit_rate()}% 盈亏:{self.profit_amount()}"
