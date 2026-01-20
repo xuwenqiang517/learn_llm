@@ -368,6 +368,19 @@ def get_all_data(start_date:str=None, end_date:str=None) -> Dict[str, Dict[str, 
     # print(f"股票数量: {len(dict)}")
     return dict
 
+def pick_rule(info: StockDayData) -> bool:
+    
+        if info.volume_trend==True and info.consecutive_up_days>=2 and info.change < 9.8:
+            return True
+        # elif info.consecutive_up_days>=3 and info.change_3d>3 and info.change_5d>10:
+        #     return True
+        # flag = flag and info.pe>0
+        # flag = flag and info.market_cap>100
+        # flag = flag and info.change < 5 and info.change > 1
+        # flag = flag and info.change_pct < 0.98
+        # flag = flag and info.volume_ratio>1.5
+        # flag = flag and info.change_3d>3 and info.change_5d>10
+        return False
 
 def pick_stock(dict: Dict[str, Dict[str, StockDayData]], day: str, strategy: str) -> list:
     rs_list=[]
@@ -376,25 +389,13 @@ def pick_stock(dict: Dict[str, Dict[str, StockDayData]], day: str, strategy: str
         if info is None:
             continue
         # 过滤逻辑
-        # print(info.full_info())
-        flag=True
-        #pickrule
-        # flag = flag and info.volume_trend==True
-        flag = flag and info.consecutive_up_days>=3
-        # flag = flag and info.pe>0
-        flag = flag and info.market_cap>100
-        # flag = flag and info.change < 5 and info.change > 1
-        flag = flag and info.change_pct < 0.98
-        flag = flag and info.volume_ratio>1.5
-        flag = flag and info.change_3d>3 and info.change_5d>10
-        if flag:
+        if pick_rule(info):
             rs_list.append(info)
-    
     # 按涨幅最小排序
-    rs_list.sort(key=lambda x: x.change, reverse=True)
-    rs=rs_list[:5]
-    # print(f"选中{rs}")
-    return rs
+    rs_list.sort(key=lambda x: x.consecutive_up_days, reverse=True)
+    # rs=rs_list[:5]
+    # print(f"选中{len(rs_list)}只股票 {rs_list}")
+    return rs_list
 
 
 
@@ -608,29 +609,25 @@ def clearn_cache():
     
 
 if __name__ == "__main__":
-    # start_date="20100101"
-    #
-    # start_date="20260101"
-    # data_dict=get_all_data(start_date=start_date)
+    # data_dict=get_all_data(start_date="20260101", end_date=calendar.last())
     # stock_list=pick_stock(dict=data_dict, day="20260119", strategy="量价多头")
-    # back_test(data_dict=data_dict,start=start_date,end="20260119",max_hold_count=5,buy_count=15000,base_total_amount=100000.00)
-    # print(stock_list)
+    # for stock in stock_list:
+    #     print(stock.full_info())
+
+
 # ["20100101","20101231"],["20110101","20111231"],["20120101","20121231"],["20130101","20131231"],["20140101","20141231"],
     arr=[["20150101","20151231"],["20160101","20161231"],["20170101","20171231"],["20180101","20181231"],["20190101","20191231"],["20200101","20201231"],["20210101","20211231"],["20220101","20221231"],["20230101","20231231"],["20240101","20241231"],["20250101","20251231"]]
-
-
     arr.reverse()
-
     avg_return_rate=0
     avg_win_rate=0
     for pair in arr:
         start_date=pair[0]
         end_date=pair[1]
         data_dict=get_all_data(start_date=start_date, end_date=end_date)
-        total_return_rate,win_rate=back_test(data_dict=data_dict,start=start_date,end=end_date,max_hold_count=3,buy_count=20000,base_total_amount=100000.00,print_fail_reason=False)
+        total_return_rate,win_rate=back_test(data_dict=data_dict,start=start_date,end=end_date,max_hold_count=5,buy_count=15000,base_total_amount=100000.00,print_fail_reason=False)
         avg_return_rate+=total_return_rate
         avg_win_rate+=win_rate
-    print(f"平均收益率:{round(avg_return_rate/len(arr)*100,2)}%")
+    print(f"平均收益率:{round(avg_return_rate/len(arr),2)}%")
     print(f"平均胜率:{round(avg_win_rate/len(arr),2)}%")
 
 
@@ -642,5 +639,4 @@ if __name__ == "__main__":
 
 
 
-# pick_stock
 # back_test
