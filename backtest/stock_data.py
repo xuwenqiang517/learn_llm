@@ -51,36 +51,32 @@ def pick_rule(info: StockDayData) -> bool:
         # flag = flag and info.change_3d>3 and info.change_5d>10
         return False
 
-def sell_rule(pre: StockDayData,cur: StockDayData,trade_info: BuySellInfo) -> bool:
+def sell_rule(pre: StockDayData, cur: StockDayData, trade_info: BuySellInfo) -> bool:
 
-    sell_flag=False
-    # 卖出价格
-    sell_price=cur.close
+    sell_flag = False
+    sell_price = cur.close
 
     if cur.open < trade_info.stop_price():
-        trade_info.sell_reason=f"[1]开盘低于止损价，直接卖出"
+        trade_info.sell_reason = f"[1]开盘低于止损价，直接卖出"
         sell_flag = True
         sell_price = cur.open
     elif cur.low < trade_info.stop_price():
-        trade_info.sell_reason=f"[2]最低价低于止损价，直接卖出"
+        trade_info.sell_reason = f"[2]最低价低于止损价，直接卖出"
         sell_flag = True
         sell_price = trade_info.stop_price()
     elif pre.change_pct < -3:
-        trade_info.sell_reason=f"[3]昨日跌超3%"
+        trade_info.sell_reason = f"[3]昨日跌超3%"
         sell_flag = True
-        sell_price = cur.open   
-    # elif trade_info.profit_rate()>40:
-    #     trade_info.sell_reason=f"[4]持仓{trade_info.hold_day}天,收益率:"+f"{trade_info.profit_rate()}%,>40%"
-    #     sell_flag = True
-    #     sell_price = cur.close
-    elif trade_info.hold_day>3 and trade_info.profit_rate()<10:
-        trade_info.sell_reason=f"[5]持仓{trade_info.hold_day}天,收益率:"+f"{trade_info.profit_rate()}%,<10%"
-        sell_flag = True
-        sell_price = cur.close
+        sell_price = cur.open
+    elif trade_info.hold_day > 3:
+        current_rate = trade_info.profit_rate(sell_price)
+        if current_rate < 10:
+            trade_info.sell_reason = f"[5]持仓{trade_info.hold_day}天,收益率:{current_rate}%,<10%"
+            sell_flag = True
 
     if sell_flag:
-        trade_info.sell_price=sell_price
-        trade_info.sell_day=cur.date
+        trade_info.sell_price = sell_price
+        trade_info.sell_day = cur.date
 
     return sell_flag
 
@@ -186,7 +182,7 @@ def back_test(start:str="20260101",end:str="20260119",data_dict:Dict[str, Dict[s
                     continue
                 hold_set.add(stock)
                 buy_list.append(stock)
-                trade=BuySellInfo(code=stock.code,name=stock.name,buy_day=cur_day,buy_price=stock_info_cur.open,sell_price=0.0,count=count)
+                trade=BuySellInfo(code=stock.code,name=stock.name,buy_day=cur_day,buy_price=round(stock_info_cur.open,2),sell_price=0.0,count=count)
                 dict_info[stock.code]=trade
                 print_green(f"buy:{trade.buy_string()} || {stock_info_cur.toString()}",print_detail)
                 # 金额处理

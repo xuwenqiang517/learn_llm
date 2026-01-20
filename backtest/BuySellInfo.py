@@ -22,11 +22,15 @@ class BuySellInfo:
         return round(self.count * self.sell_price, 2)
 
     # 收益率
-    def profit_rate(self):
-        if self.sell_price>0:
+    def profit_rate(self, price: float = None):
+        if price is not None:
+            return round((price * self.count / self.buy_amount() - 1) * 100, 2)
+        if self.sell_price > 0:
             return round((self.sell_amount() / self.buy_amount() - 1) * 100, 2)
         else:
             return round((self.hold_amount() / self.buy_amount() - 1) * 100, 2)
+    
+    
     # 收益金额
     def profit_amount(self):
         if self.sell_price > 0:
