@@ -60,8 +60,6 @@ def calc_tech_indicators(dict: dict):
         df["change_3d"] = df["涨跌幅"].rolling(window=3).sum().round(2)
         df["change_5d"] = df["涨跌幅"].rolling(window=5).sum().round(2)
         df["change_10d"] = df["涨跌幅"].rolling(window=10).sum().round(2)
-        df["volume_ratio"] = (df["成交量"] / vol_ma20.replace(0, 1)).round(2)
-        df["volume_trend"] = (ma5 > ma10) & (ma10 > ma20) & (vol_ma5 > vol_ma10) & (vol_ma10 > vol_ma20)
         
         close_prices = df["收盘"].values
         consecutive_up = []
@@ -77,7 +75,15 @@ def calc_tech_indicators(dict: dict):
                     count = 0
                 consecutive_up.append(count)
         df["consecutive_up_days"] = consecutive_up
-    
+        
+        df["volume_ratio"] = (df["成交量"] / df["成交量"].shift(1)).round(2)
+        df["ma5_gt_ma10"] = (ma5 > ma10).astype(int)
+        df["ma10_gt_ma20"] = (ma10 > ma20).astype(int)
+        df["vma5_gt_vma10"] = (vol_ma5 > vol_ma10).astype(int)
+        df["vma10_gt_vma20"] = (vol_ma10 > vol_ma20).astype(int)
+        df["volume_trend"] = df["ma5_gt_ma10"] & df["ma10_gt_ma20"] & df["vma5_gt_vma10"] & df["vma10_gt_vma20"]
+        
+        df["vol_rank"] = df["成交量"].rank(ascending=False, method="min").astype(int)
     return dict
 
 def calc_basic_indicators(dict: dict):
@@ -112,16 +118,23 @@ def cslc_index(dict: dict):
                 change_pct=row[10],
                 change=row[11],
                 turnover_rate=row[12],
+                #基本面
                 pe=row[13],
                 pb=row[14],
                 market_cap=row[15],
                 circulating_market_cap=row[16],
+                #技术面
                 change_3d=row[17],
                 change_5d=row[18],
                 change_10d=row[19],
-                volume_ratio=row[20],
-                volume_trend=row[21],
-                consecutive_up_days=row[22]
+                consecutive_up_days=row[20],
+                volume_ratio=row[21],
+                ma5_gt_ma10=row[22],
+                ma10_gt_ma20=row[23],
+                vma5_gt_vma10=row[24],
+                vma10_gt_vma20=row[25],
+                volume_trend=row[26],
+                vol_rank=row[27]
             )
     return dict2
 

@@ -39,7 +39,7 @@ class BuySellInfo:
             return round(self.hold_amount() - self.buy_amount(), 2)
     # 止损价
     def stop_price(self,rate:float=0.05):
-        return self.buy_price * (1 - rate)
+        return round(self.buy_price * (1 - rate),2)
     # 持仓金额
     def hold_amount(self):
         return round(self.close * self.count, 2)
@@ -52,4 +52,4 @@ class BuySellInfo:
         return f"[sell_string]{self.name} 日期:{self.buy_day}->{self.sell_day}（{self.hold_day}天 价格:{self.buy_price}->{self.sell_price} 涨跌幅:{self.profit_rate()}% 盈亏:{self.profit_amount()}  卖出原因:{self.sell_reason}"
 
     def hold_string(self):
-        return f"[hold_string]{self.name} 买入:{self.buy_price}({self.buy_day}) 持仓:{self.hold_day}天  收益率{self.profit_rate()}% 盈亏:{self.profit_amount()}"
+        return f"[hold_string]{self.name} 买入:{self.buy_price}({self.buy_day}) 持仓:{self.hold_day}天 收益率{self.profit_rate()}% 盈亏:{self.profit_amount()}"
