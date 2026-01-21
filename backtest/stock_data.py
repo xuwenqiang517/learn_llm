@@ -3,6 +3,7 @@ from StockDayData import StockDayData
 from TradingCalendar import TradingCalendar
 from data_fetcher import get_all_data
 from BuySellInfo import BuySellInfo
+from TradeDaily import TradeDaily
 
 
 def print_green(msg,enable=True):
@@ -30,6 +31,7 @@ calendar = TradingCalendar()
 
 # 判断卖出原因 0=不卖出
 def sell_rule(pre: StockDayData, cur: StockDayData, trade_info: BuySellInfo) -> int:
+    # print_white(f"sell_rule: {pre.full_info()} {cur.full_info()} ")
     sell_flag = ""
     sell_price = cur.close
     # 止损价
@@ -214,6 +216,31 @@ def back_test(start:str="20260101",end:str="20260119",data_dict:Dict[str, Dict[s
     return total_return_rate,win_rate
 
 
+def back_test1(start:str="20260101",end:str="20260119"
+                ,data_dict:Dict[str, Dict[str, StockDayData]]=None
+                ,base_total_amount:float=100000.00,buy_count:int=10000,max_hold_count:int=10
+                ,print_detail:bool=False,print_fail_reason:bool=False)->tuple[float,float]:
+    pre_day=calendar.pre(start)
+    cur_day=calendar.next(pre_day)
+    trade_daily=TradeDaily(max_hold_count=max_hold_count,max_hold_amount=buy_count,base_amount=base_total_amount
+                            ,pre_day=pre_day,curr_day=cur_day,data_dict=data_dict,enable_log=print_detail)
+    
+    print(f"start:{start} end:{end} ,pre_day:{pre_day} ,curr_day:{cur_day}")
+    while cur_day<end:
+        trade_daily.do_pick(lambda:pick_stock(data_dict,pre_day),max_hold_count)
+        trade_daily.do_buy()
+        trade_daily.do_sell()
+        trade_daily.do_hold()
+        pre_day=cur_day
+        cur_day=calendar.next(cur_day)
+        trade_daily.update_day(cur_day)
+    return trade_daily.end()
+
+
+    #     pre_day=cur_day
+    #     cur_day=calendar.next(cur_day)
+    # return trade_daily.end()
+
 
 def test_cur():
     data_dict=get_all_data(start_date="20260101", end_date=calendar.last())
@@ -229,30 +256,30 @@ def test_10(arr=[["20150101","20151231"],["20160101","20161231"],["20170101","20
         start_date=pair[0]
         end_date=pair[1]
         data_dict=get_all_data(start_date=start_date, end_date=end_date)
-        total_return_rate,win_rate=back_test(data_dict=data_dict,start=start_date,end=end_date
+
+        total_return_rate,win_rate=back_test1(data_dict=data_dict,start=start_date,end=end_date
         ,max_hold_count=5,buy_count=20000,base_total_amount=100000.00
         ,print_fail_reason=False)
+
+
         avg_return_rate+=total_return_rate
         avg_win_rate+=win_rate
     print(f"平均收益率:{round(avg_return_rate/len(arr),2)}%")
     print(f"平均胜率:{round(avg_win_rate/len(arr),2)}%")
 
 def test_1():
-    # pair=["20200101","20201231"]
+    pair=["20250101","20251231"]
     # pair=["20250601","20251231"]
-    pair=["20251201","20251231"]
-    start_date=pair[0]
-    end_date=pair[1]
-    data_dict=get_all_data(start_date=start_date, end_date=end_date)
-    # print_white(data_dict["600519"])
-    # print_white(data_dict["000001"]["20201231"])
-    back_test(data_dict=data_dict,start=start_date,end=end_date
+    # pair=["20251201","20251231"]
+    data_dict=get_all_data(start_date=pair[0], end_date=pair[1])
+    back_test1(data_dict=data_dict,start=pair[0],end=pair[1]
     ,max_hold_count=5,buy_count=20000,base_total_amount=100000.00
     ,print_detail=True)
 
 if __name__ == "__main__":
     # test_cur()
     test_10([["20200101","20201231"],["20210101","20211231"],["20220101","20221231"],["20230101","20231231"],["20240101","20241231"],["20250101","20251231"]])
+    # test_10([["20250101","20251231"]])
     # test_10()
     # test_1()
     
