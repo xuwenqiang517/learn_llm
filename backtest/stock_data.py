@@ -28,8 +28,9 @@ def print_white(msg,enable=True):
 calendar = TradingCalendar()
 
 
-def sell_rule(pre: StockDayData, cur: StockDayData, trade_info: BuySellInfo) -> bool:
-    sell_flag = False
+# 判断卖出原因 0=不卖出
+def sell_rule(pre: StockDayData, cur: StockDayData, trade_info: BuySellInfo) -> int:
+    sell_flag = ""
     sell_price = cur.close
     # 止损价
     stop_price=trade_info.stop_price()
@@ -37,33 +38,33 @@ def sell_rule(pre: StockDayData, cur: StockDayData, trade_info: BuySellInfo) -> 
     current_rate = trade_info.profit_rate(sell_price)
     if cur.open < stop_price:
         trade_info.sell_reason = f"[1]开盘{cur.open}低于止损价{stop_price}，直接卖出"
-        sell_flag = True
+        sell_flag = "止损价"
         sell_price = cur.open
     # elif cur.low < stop_price:
     #     trade_info.sell_reason = f"[2]最低价{cur.low}低于止损价{stop_price}，直接卖出"
     #     sell_flag = True
     #     sell_price = stop_price
-    elif pre.change_pct < -3:
+    elif pre.change_pct < -5:
         trade_info.sell_reason = f"[3]昨日跌{pre.change_pct}%,直接卖出"
-        sell_flag = True
+        sell_flag = "昨日跌5%"
         sell_price = cur.open
-    elif trade_info.hold_day > 2:
-        if current_rate < 3:
-            trade_info.sell_reason = f"[4]持仓{trade_info.hold_day}天,收益率:{current_rate}%,<3%"
-            sell_flag = True
-    elif trade_info.hold_day > 3:
-        if current_rate < 10:
-            trade_info.sell_reason = f"[5]持仓{trade_info.hold_day}天,收益率:{current_rate}%,<10%"
-            sell_flag = True
-    elif trade_info.hold_day > 5:
-        if current_rate < 15:
-            trade_info.sell_reason = f"[6]持仓{trade_info.hold_day}天,收益率:{current_rate}%,<15%"
-            sell_flag = True
-    elif current_rate > 25:
-        trade_info.sell_reason = f"[7]持仓{trade_info.hold_day}天,收益率:{current_rate}%,>25%"
-        sell_flag = True
+    # elif trade_info.hold_day > 2:
+    #     if current_rate < 3:
+    #         trade_info.sell_reason = f"[4]持仓{trade_info.hold_day}天,收益率:{current_rate}%,<3%"
+    #         sell_flag = "持有2天收益<3%"
+    # elif trade_info.hold_day > 3:
+    #     if current_rate < 10:
+    #         trade_info.sell_reason = f"[5]持仓{trade_info.hold_day}天,收益率:{current_rate}%,<10%"
+    #         sell_flag = True
+    elif trade_info.hold_day > 6:
+        if current_rate < 20:
+            trade_info.sell_reason = f"[6]持仓{trade_info.hold_day}天,收益率:{current_rate}%,<20%"
+            sell_flag = "持有6天收益<20%"
+    # elif current_rate > 40:
+    #     trade_info.sell_reason = f"[7]持仓{trade_info.hold_day}天,收益率:{current_rate}%,>40%"
+    #     sell_flag = True
 
-    if sell_flag:
+    if len(sell_flag)>0:
         trade_info.sell_price = sell_price
         trade_info.sell_day = cur.date
 
@@ -116,8 +117,13 @@ def back_test(start:str="20260101",end:str="20260119",data_dict:Dict[str, Dict[s
     min_profit_rate=float("inf")
     # 胜率
     win_count=0
-    # 总交易次数
-    trade_count=0
+    # 总卖出次数
+    sell_count=0
+    # 卖出原因统计
+    sell_reason_dict={}
+    # 选票数量
+    total_pick_stock_count=0
+    # 交易次数
     while cur_day<end:
         print_white("="*80+f"今天:{cur_day}"+ "="*80,print_detail)
         #选票
@@ -159,12 +165,15 @@ def back_test(start:str="20260101",end:str="20260119",data_dict:Dict[str, Dict[s
                 continue
             trade_info=dict_info[stock.code]
             # 确认要卖
-            if sell_rule(stock_info_pre,stock_info_cur,trade_info):
+            sell_flag = sell_rule(stock_info_pre,stock_info_cur,trade_info)
+            if len(sell_flag)>0:
+                # 记录卖出原因
+                sell_reason_dict[sell_flag]=sell_reason_dict.get(sell_flag,0)+1
                 sell_list.append(stock)
                 # 金额处理
                 total_free_amount+=trade_info.sell_amount()
                 # 记录交易次数
-                trade_count+=1
+                sell_count+=1
                 # 记录胜率
                 if trade_info.sell_amount()>trade_info.buy_amount():
                     win_count+=1
@@ -199,8 +208,8 @@ def back_test(start:str="20260101",end:str="20260119",data_dict:Dict[str, Dict[s
 
     total_amount=total_free_amount+total_hold_amount
     total_return_rate=round((total_amount-base_total_amount)/base_total_amount*100,2)
-    win_rate=round(win_count/trade_count*100,2) if trade_count>0 else 0
-    rs_str=f"{start},{end} 资金{base_total_amount}->{total_amount} 总收益率:{total_return_rate}% 最高:{max_profit_rate}% 最低:{min_profit_rate}% 胜率:{win_rate}% 总交易次数:{trade_count}"
+    win_rate=round(win_count/sell_count*100,2) if sell_count>0 else 0
+    rs_str=f"{start},{end} 资金{base_total_amount}->{total_amount} 总收益率:{total_return_rate}% 最高:{max_profit_rate}% 最低:{min_profit_rate}% 胜率:{win_rate}% 总交易次数:{sell_count} 卖出原因统计:{sorted(sell_reason_dict.items(), key=lambda x: x[0], reverse=True)}"
     print_red( rs_str,True)
     return total_return_rate,win_rate
 
@@ -230,8 +239,8 @@ def test_10(arr=[["20150101","20151231"],["20160101","20161231"],["20170101","20
 
 def test_1():
     # pair=["20200101","20201231"]
-    pair=["20250601","20251231"]
-    # pair=["20251201","20251231"]
+    # pair=["20250601","20251231"]
+    pair=["20251201","20251231"]
     start_date=pair[0]
     end_date=pair[1]
     data_dict=get_all_data(start_date=start_date, end_date=end_date)
@@ -242,8 +251,8 @@ def test_1():
     ,print_detail=True)
 
 if __name__ == "__main__":
-    test_cur()
-    # test_10([["20200101","20201231"],["20210101","20211231"],["20220101","20221231"],["20230101","20231231"],["20240101","20241231"],["20250101","20251231"]])
+    # test_cur()
+    test_10([["20200101","20201231"],["20210101","20211231"],["20220101","20221231"],["20230101","20231231"],["20240101","20241231"],["20250101","20251231"]])
     # test_10()
-
     # test_1()
+    
