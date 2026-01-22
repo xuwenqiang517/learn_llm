@@ -8,7 +8,7 @@ class TradingCalendar:
     
     def __init__(self) -> None:
         self.today = date.today().strftime("%Y%m%d")
-        self.day_dict = get_with_cache("trading_days.pkl", self.load)
+        self.day_dict = get_with_cache(f"trading_days_{self.today}_{datetime.now().hour>15}.pkl", self.load)
         
     def load(self):
         df = ak.tool_trade_date_hist_sina()

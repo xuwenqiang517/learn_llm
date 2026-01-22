@@ -52,3 +52,17 @@ def get_with_cache(file_name, func):
         f.write(packed)
     print(f"写入缓存 {file_name} 耗时：{datetime.now()-start_time}ms")
     return rs
+
+def get_with_cache_feather(file_name, func):
+    start_time = datetime.now()
+    try:
+        df = pd.read_feather(cache_url/file_name)
+        print(f"从缓存 {file_name} 读取数据耗时：{datetime.now()-start_time}ms")
+        return df
+    except Exception as e:
+        print(f"读缓存{file_name}失败 原因：{e}")
+    
+    rs = func()
+    rs.to_feather(cache_url/file_name)
+    print(f"写入缓存 {file_name} 耗时：{datetime.now()-start_time}ms")
+    return rs

@@ -127,14 +127,14 @@ class TradeDaily:
         total_amount=total_hold_amount+self.total_free_amount
         self.print_white(f"{self.curr_day} 可用:{self.total_free_amount} 持仓: {total_hold_amount} 总资金: {total_amount}",self.enable_log)
         # 更新最大收益率
-        self.max_profit_rate=max(self.max_profit_rate,round((total_amount/self.base_amount)*100,2))
+        self.max_profit_rate=max(self.max_profit_rate,round((total_amount-self.base_amount)/self.base_amount*100,2))
         # 更新最小收益率
-        self.min_profit_rate=min(self.min_profit_rate,round((total_amount/self.base_amount)*100,2))
+        self.min_profit_rate=min(self.min_profit_rate,round((total_amount-self.base_amount)/self.base_amount*100,2))
 
     def end(self)->tuple[float,float]:
         win_rate=round(self.win_count/self.sell_count*100,2) if self.sell_count>0 else 0
         total_hold_amount=sum([buy_sell_info.hold_amount() for buy_sell_info in self.hold_dict.values()])
-        rate=round(((self.total_free_amount+total_hold_amount)/self.base_amount)*100,2)
+        rate=round(((self.total_free_amount+total_hold_amount-self.base_amount)/self.base_amount)*100,2)
         self.print_white(f"{self.curr_day} 总收益率: {rate}% 最大收益率: {self.max_profit_rate}% 最小收益率: {self.min_profit_rate}% 胜率: {win_rate}% 卖出统计: {sorted(self.sell_reason_dict.items(),key=lambda x:x[0])} 平均选票数量: {self.pick_stock_count/self.pick_count}" )
         return rate,win_rate
 

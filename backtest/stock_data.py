@@ -1,3 +1,4 @@
+import datetime
 from typing import OrderedDict, Dict, Any
 from StockDayData import StockDayData
 from TradingCalendar import TradingCalendar
@@ -225,7 +226,7 @@ def back_test1(start:str="20260101",end:str="20260119"
     trade_daily=TradeDaily(max_hold_count=max_hold_count,max_hold_amount=buy_count,base_amount=base_total_amount
                             ,pre_day=pre_day,curr_day=cur_day,data_dict=data_dict,enable_log=print_detail)
     
-    print(f"start:{start} end:{end} ,pre_day:{pre_day} ,curr_day:{cur_day}")
+    # print(f"start:{start} end:{end} ,pre_day:{pre_day} ,curr_day:{cur_day}")
     while cur_day<end:
         trade_daily.do_pick(lambda:pick_stock(data_dict,pre_day),max_hold_count)
         trade_daily.do_buy()
@@ -243,8 +244,12 @@ def back_test1(start:str="20260101",end:str="20260119"
 
 
 def test_cur():
-    data_dict=get_all_data(start_date="20260101", end_date=calendar.last())
-    stock_list=pick_stock(dict=data_dict, day="20260119")
+    cur_day=calendar.last()
+    print(cur_day)
+    data_dict=get_all_data(start_date="20260101", end_date=cur_day)
+    # print(data_dict["600000"].keys())
+    stock_list=pick_stock(dict=data_dict, day=cur_day)
+    print(f"结果: {len(stock_list)}")
     for stock in stock_list:
         print(stock.full_info())
 
@@ -277,9 +282,11 @@ def test_1():
     ,print_detail=True)
 
 if __name__ == "__main__":
+    strt_time=datetime.datetime.now()
     # test_cur()
-    test_10([["20200101","20201231"],["20210101","20211231"],["20220101","20221231"],["20230101","20231231"],["20240101","20241231"],["20250101","20251231"]])
-    # test_10([["20250101","20251231"]])
+    # test_10([["20200101","20201231"],["20210101","20211231"],["20220101","20221231"],["20230101","20231231"],["20240101","20241231"],["20250101","20251231"]])
+    test_10([["20250101","20251231"]])
     # test_10()
     # test_1()
+    print(f"总耗时: {datetime.datetime.now()-strt_time}")
     

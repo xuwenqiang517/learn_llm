@@ -1,10 +1,15 @@
+from pandas.core.frame import DataFrame
+from concurrent.futures._base import Future
+from pandas.core.frame import DataFrame
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict
+from typing import Any, Dict
 import akshare as ak
 import pandas as pd
 from tqdm import tqdm
 from StockDayData import StockDayData
-from cache_utils import get_with_cache
+from cache_utils import get_with_cache, get_with_cache_feather
+from datetime import datetime
+import numpy as np
 
 def get_stock_list() -> pd.DataFrame:
     print("获取股票数据")
@@ -42,13 +47,57 @@ def get_stock_his(df: pd.DataFrame, start_date: str = "20100101", end_date: str 
     with ThreadPoolExecutor(max_workers=4) as executor:
         futures = {executor.submit(fetch_stock, code_name): code_name for code_name in stock_list}
         
-        for future in tqdm(as_completed(futures), total=len(stock_list), desc="下载进度"):
+        for future in tqdm[Future[tuple[Any, DataFrame] | tuple[Any, None]]](as_completed(futures), total=len(stock_list), desc="下载进度"):
             code, stock_df = future.result()
             if stock_df is not None:
                 rs[code] = stock_df
     
     return rs
 
+def get_stock_his2(code_name_df: pd.DataFrame, start: str, end: str) -> pd.DataFrame:
+    print(f"获取股票历史数据: {start} - {end}")
+    
+    all_data = []
+    for row in tqdm(code_name_df.itertuples(), total=len(code_name_df), desc="下载进度"):
+        try:
+            stock_df = ak.stock_zh_a_hist(symbol=row.代码, period="daily", start_date=start, end_date=end)
+            stock_df.insert(2, "名称", row.名称)
+            stock_df["日期"] = pd.to_datetime(stock_df["日期"]).dt.strftime("%Y%m%d")
+            all_data.append(stock_df)
+        except Exception as e:
+            print(f"获取股票 {row.代码} 数据失败: {e}")
+    
+    if all_data:
+        result_df = pd.concat(all_data, ignore_index=True)
+        return result_df
+    return pd.DataFrame()    
+
+
+def get_stock_his(df: pd.DataFrame, start_date: str = "20100101", end_date: str = None):
+    rs = {}
+    stock_list = df[["代码", "名称"]].values
+    print(f"获取股票历史数据: {start_date} - {end_date}")
+    
+    def fetch_stock(code_name):
+        code, name = code_name
+        try:
+            stock_df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date=start_date, end_date=end_date)
+            stock_df.insert(2, "名称", name)
+            day_int = pd.to_datetime(stock_df["日期"]).dt.strftime("%Y%m%d")
+            stock_df["日期"] = day_int
+            return code, stock_df
+        except Exception as e:
+            return code, None
+    
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(fetch_stock, code_name): code_name for code_name in stock_list}
+        
+        for future in tqdm(as_completed(futures), total=len(stock_list), desc="下载进度"):
+            code, stock_df = future.result()
+            if stock_df is not None:
+                rs[code] = stock_df
+    
+    return rs
 def calc_tech_indicators(dict: dict):
     for code, df in dict.items():
         ma5 = df["收盘"].rolling(window=5).mean().round(2)
@@ -85,6 +134,36 @@ def calc_tech_indicators(dict: dict):
         
         df["vol_rank"] = df["成交量"].rank(ascending=False, method="min").astype(int)
     return dict
+
+async def calc_tech(df: pd.DataFrame) -> pd.DataFrame:
+    # ma5 = df["收盘"].rolling(window=5).mean().round(2)
+    # ma10 = df["收盘"].rolling(window=10).mean().round(2)
+    # ma20 = df["收盘"].rolling(window=20).mean().round(2)
+    # vol_ma5 = df["成交量"].rolling(window=5).mean().round(2)
+    # vol_ma10 = df["成交量"].rolling(window=10).mean().round(2)
+    # vol_ma20 = df["成交量"].rolling(window=20).mean().round(2)
+    df["change_3d"] = df["涨跌幅"].rolling(window=3).sum().round(2)
+    df["change_5d"] = df["涨跌幅"].rolling(window=5).sum().round(2)
+    df["change_10d"] = df["涨跌幅"].rolling(window=10).sum().round(2)
+    
+    df["consecutive_up_days"] = calc_up_days(df["收盘"].values)
+    
+    
+def calc_up_days(close_prices: np.ndarray) -> np.ndarray:
+    consecutive_up = []
+    count = 0
+    for i in range(len(close_prices)):
+        if i == 0:
+            consecutive_up.append(0)
+            count = 0
+        else:
+            if close_prices[i] > close_prices[i - 1]:
+                count += 1
+            else:
+                count = 0
+            consecutive_up.append(count)
+    return consecutive_up
+
 
 def calc_basic_indicators(dict: dict):
     stock_zh_a_spot_em_df = get_with_cache("stock_zh_a_spot_em.pkl", ak.stock_zh_a_spot_em)
@@ -139,17 +218,45 @@ def cslc_index(dict: dict):
     return dict2
 
 def get_all_data(start_date: str = None, end_date: str = None) -> Dict[str, Dict[str, StockDayData]]:
+    start_time = datetime.now()
     df = get_with_cache("get_stock_list.pkl", get_stock_list)
+    # print(f"获取股票列表耗时: {datetime.now() - start_time}")
     dict = get_with_cache(f"get_stock_his_{start_date}_{end_date}.pkl", lambda: get_stock_his(df, start_date=start_date, end_date=end_date))
     
-    for code, df in dict.items():
-        if df is None:
-            continue
-        df = df[(df["日期"] >= start_date) & (df["日期"] <= end_date)]
-        dict[code] = df
-    
+    print(f"获取股票历史数据耗时: {datetime.now() - start_time}")
     calc_basic_indicators(dict)
+    # print(f"计算基本面指标耗时: {datetime.now() - start_time}")
     dict = calc_tech_indicators(dict)
+    print(f"计算技术指标耗时: {datetime.now() - start_time}")
     dict = cslc_index(dict)
+    print(f"转换为 StockDayData 耗时: {datetime.now() - start_time}")
 
     return dict
+
+if __name__ == "__main__":
+
+
+    strt_time=datetime.now()
+    # get_all_data(start_date="20250101", end_date="20251231")
+
+    day=datetime.now().strftime("%Y%m%d")
+    start="20250101"
+    end="20251231"
+    code_name_df=get_with_cache_feather(f"get_stock_list_{day}.pkl", get_stock_list)
+    # print(code_name_df.head())
+    # df=get_with_cache_feather(f"get_stock_list_{day}.pkl", get_stock_list)
+    code_base_df=get_with_cache_feather(f"get_stock_his_{start}_{end}.pkl", lambda: get_stock_his2(code_name_df,start=start, end=end))
+
+
+
+    print(f"获取数据行数: {len(code_base_df)}")
+    print(f"数据列: {code_base_df.columns.tolist()}")
+    print(code_base_df.head())
+
+    full_df=calc_tech(code_base_df)
+    print(f"计算技术指标耗时: {datetime.now() - strt_time}")
+
+
+
+    print(f"总耗时: {datetime.now()-strt_time}")
+    
