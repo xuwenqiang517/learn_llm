@@ -2,7 +2,7 @@ import datetime
 from typing import OrderedDict, Dict, Any
 from StockDayData import StockDayData
 from TradingCalendar import TradingCalendar
-from data_fetcher import get_all_data
+from data_fetcher import get_all_data, get_all_data_feather
 from BuySellInfo import BuySellInfo
 from TradeDaily import TradeDaily
 
@@ -281,12 +281,56 @@ def test_1():
     ,max_hold_count=5,buy_count=20000,base_total_amount=100000.00
     ,print_detail=True)
 
+
+
+
+
+
 if __name__ == "__main__":
     strt_time=datetime.datetime.now()
+    data_dict=get_all_data_feather(start_date="20150101", end_date="20251231")
     # test_cur()
     # test_10([["20200101","20201231"],["20210101","20211231"],["20220101","20221231"],["20230101","20231231"],["20240101","20241231"],["20250101","20251231"]])
-    test_10([["20250101","20251231"]])
+    # test_10([["20250101","20251231"]])
     # test_10()
     # test_1()
+
+    calendar = TradingCalendar()
+    arr=[["20200101","20201231"],["20210101","20211231"],["20220101","20221231"],["20230101","20231231"],["20240101","20241231"],["20250101","20251231"]]
+    # arr=[["20240101","20241231"],["20250101","20251231"]]
+    # arr=[["20251201","20251231"]]
+    max_hold_count=5
+    buy_count=20000
+    base_total_amount=100000.00
+    print_detail=False
+    total_return_rate=0
+    total_win_rate=0
+    for days in arr:
+        start_date=days[0]
+        end_date=days[1]
+        pre_day=calendar.pre(days[0])
+        cur_day=calendar.next(pre_day)
+        trade_daily=TradeDaily(max_hold_count=max_hold_count
+                ,max_hold_amount=buy_count
+                ,base_amount=base_total_amount
+                ,pre_day=pre_day
+                ,curr_day=cur_day
+                ,data_dict=data_dict
+                ,enable_log=print_detail)
+        while cur_day<=end_date:
+            trade_daily.do_pick(lambda:pick_stock(data_dict,pre_day),max_hold_count)
+            trade_daily.do_buy()
+            trade_daily.do_sell()
+            trade_daily.do_hold()
+            pre_day=cur_day
+            cur_day=calendar.next(cur_day)
+            trade_daily.update_day(cur_day)
+        
+        total_return_rate,win_rate=trade_daily.end()
+        total_return_rate+=total_return_rate
+        total_win_rate+=win_rate
+    print(f"平均收益率:{round(total_return_rate/len(arr),2)}%,平均胜率:{round(total_win_rate/len(arr),2)}%")
+    
+
     print(f"总耗时: {datetime.datetime.now()-strt_time}")
     

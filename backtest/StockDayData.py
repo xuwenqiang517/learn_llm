@@ -1,35 +1,35 @@
 from dataclasses import dataclass
 
-@dataclass
+@dataclass(slots=True, frozen=False, init=False)
 class StockDayData:
-    date: str
-    code: str
-    name: str
-    open: float
-    close: float
-    high: float
-    low: float
-    volume: int
-    amount: float
-    amplitude: float
-    change_pct: float
-    change: float
-    turnover_rate: float
-    pe: float
-    pb: float
-    market_cap: float
-    circulating_market_cap: float
-    change_3d: float
-    change_5d: float
-    change_10d: float
-    consecutive_up_days: int
-    volume_ratio: float
-    ma5_gt_ma10: int
-    ma10_gt_ma20: int
-    vma5_gt_vma10: int
-    vma10_gt_vma20: int
-    volume_trend: bool
-    vol_rank: int
+    date: str = None
+    code: str = None
+    name: str = None
+    open: float = None
+    close: float = None
+    high: float = None
+    low: float = None
+    volume: int = None
+    amount: float = None
+    amplitude: float = None
+    change_pct: float = None
+    change: float = None
+    turnover_rate: float = None
+    pe: float = None
+    pb: float = None
+    market_cap: float = None
+    circulating_market_cap: float = None
+    change_3d: float = None
+    change_5d: float = None
+    change_10d: float = None
+    consecutive_up_days: int = None
+    volume_ratio: float = None
+    ma5_gt_ma10: int = None
+    ma10_gt_ma20: int = None
+    vma5_gt_vma10: int = None
+    vma10_gt_vma20: int = None
+    volume_trend: bool = None
+    vol_rank: int = None
     
 
     def toString(self):
