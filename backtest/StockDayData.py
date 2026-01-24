@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-@dataclass(slots=True, frozen=False, init=False)
+@dataclass(slots=True, frozen=False)
 class StockDayData:
     date: str = None
     code: str = None

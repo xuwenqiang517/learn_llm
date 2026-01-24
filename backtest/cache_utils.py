@@ -4,6 +4,7 @@ from dataclasses import fields
 import pandas as pd
 import msgpack
 from StockDayData import StockDayData
+import time
 
 cache_url = Path(__file__).resolve().parent.parent / ".temp/data/cache"
 
@@ -53,7 +54,7 @@ def get_with_cache(file_name, func):
     print(f"写入缓存 {file_name} 耗时：{datetime.now()-start_time}ms")
     return rs
 
-def get_with_cache_feather(file_name, func):
+def get_with_cache_feather(file_name, func,sleep_time=0):
     start_time = datetime.now()
     try:
         df = pd.read_feather(cache_url/file_name)
@@ -65,4 +66,6 @@ def get_with_cache_feather(file_name, func):
     rs = func()
     rs.to_feather(cache_url/file_name)
     print(f"写入缓存 {file_name} 耗时：{datetime.now()-start_time}ms")
+    if sleep_time>0:
+        time.sleep(sleep_time)
     return rs

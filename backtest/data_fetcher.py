@@ -6,6 +6,8 @@ from StockDayData import StockDayData
 from cache_utils import get_with_cache, get_with_cache_feather
 from datetime import datetime
 import numpy as np
+import time
+
 
 def get_stock_list() -> pd.DataFrame:
     print("获取股票数据")
@@ -27,14 +29,15 @@ def get_stock_list() -> pd.DataFrame:
 
 def get_stock_his2(code_name_df: pd.DataFrame, start: str, end: str) -> pd.DataFrame:
     all_data = []
-    for row in tqdm[tuple[Any, ...]](code_name_df.itertuples(), total=len(code_name_df), desc="下载进度"):
+    for row in tqdm(code_name_df.itertuples(), total=len(code_name_df), desc="下载进度"):
         try:
-            stock_df = ak.stock_zh_a_hist(symbol=row.代码, period="daily", start_date=start, end_date=end)
+            stock_df = get_with_cache_feather(f"{row.代码}_{start}_{end}.feather", lambda: ak.stock_zh_a_hist(symbol=row.代码, period="daily", start_date=start, end_date=end), sleep_time=1)
             stock_df.insert(2, "名称", row.名称)
             stock_df["日期"] = pd.to_datetime(stock_df["日期"]).dt.strftime("%Y%m%d")
             all_data.append(stock_df)
         except Exception as e:
             print(f"获取股票 {row.代码} 数据失败: {e}")
+            break
     
     if all_data:
         result_df = pd.concat(all_data, ignore_index=True)
@@ -108,21 +111,18 @@ def build_index(df: pd.DataFrame) -> Dict[str, Dict[str, StockDayData]]:
 
 
 def get_all_data_feather(start_date: str = None, end_date: str = None) -> Dict[str, Dict[str, StockDayData]]:
-    full_df=get_with_cache_feather(f"get_stock_rich_{start_date}_{end_date}.pkl"
-    , lambda: calc_tech(get_with_cache_feather(f"get_stock_his_{start_date}_{end_date}.pkl"
-        , lambda: get_stock_his2(lambda:get_with_cache_feather(
-            f"get_stock_list_{day}.pkl", get_stock_list)
-        ,start=start_date, end=end_date))
-        )
-    )
+
+    stock_list_df=get_with_cache_feather(f"get_stock_list_{day}.pkl", get_stock_list)
+    # stock_his_df=get_with_cache_feather(f"get_stock_his_{start_date}_{end_date}.pkl", lambda: get_stock_his2(stock_list_df, start=start_date, end=end_date))
+    stock_his_df=get_stock_his2(stock_list_df, start=start_date, end=end_date)
+    # full_df=get_with_cache_feather(f"get_stock_rich_{start_date}_{end_date}.pkl", lambda: calc_tech(stock_his_df))
+    full_df=calc_tech(stock_his_df)
     return build_index(full_df)
 
 if __name__ == "__main__":
     strt_time=datetime.now()
     day=datetime.now().strftime("%Y%m%d")
-    dict=get_all_data_feather(start_date="20150101", end_date="20251231")
-    print(dict["600000"]["20251231"])
-
-    
+    dict=get_all_data_feather(start_date="20150101", end_date="20251231")                                                                                                                                                                                                                                                                                                                                                                              
+    print(dict["600082"]["20151231"])
     print(f"总耗时: {datetime.now()-strt_time}")
     
