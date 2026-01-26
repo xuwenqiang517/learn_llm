@@ -3,7 +3,7 @@ import akshare as ak
 import pandas as pd
 from tqdm import tqdm
 from StockDayData import StockDayData
-from cache_utils import get_with_cache, get_with_cache_feather
+from cache_utils import *
 from datetime import datetime
 import numpy as np
 import time
@@ -120,9 +120,18 @@ def get_all_data_feather(start_date: str = None, end_date: str = None) -> Dict[s
     return build_index(full_df)
 
 if __name__ == "__main__":
-    strt_time=datetime.now()
-    day=datetime.now().strftime("%Y%m%d")
-    dict=get_all_data_feather(start_date="20150101", end_date="20251231")                                                                                                                                                                                                                                                                                                                                                                              
-    print(dict["600082"]["20151231"])
-    print(f"总耗时: {datetime.now()-strt_time}")
+    # strt_time=datetime.now()
+    # day=datetime.now().strftime("%Y%m%d")
+    # dict=get_all_data_feather(start_date="20150101", end_date="20251231")                                                                                                                                                                                                                                                                                                                                                                              
+    # print(dict["600082"]["20151231"])
+    # print(f"总耗时: {datetime.now()-strt_time}")
+    
+
+    df=get_cache_feather(f"get_stock_his_20150101_20251231.pkl")
+
+    for year, group in df.groupby(df["日期"].str[:4]):
+        set_cache_feather(group,f"stock_his_{year}.feather")
+        group.to_feather(f"get_stock_his_{year}.feather")
+
+    print(df.head())
     
