@@ -53,6 +53,12 @@ def get_with_cache(file_name, func):
         f.write(packed)
     print(f"写入缓存 {file_name} 耗时：{datetime.now()-start_time}ms")
     return rs
+    
+def get_cache_feather(file_name):
+    return pd.read_feather(cache_url/file_name)
+
+def set_cache_feather(pd,file_name):
+    return pd.to_feather(cache_url/file_name)
 
 def get_with_cache_feather(file_name, func,sleep_time=0):
     start_time = datetime.now()
