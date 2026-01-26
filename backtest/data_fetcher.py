@@ -131,7 +131,7 @@ if __name__ == "__main__":
 
     for year, group in df.groupby(df["日期"].str[:4]):
         set_cache_feather(group,f"stock_his_{year}.feather")
-        group.to_feather(f"get_stock_his_{year}.feather")
+        # group.to_feather(f"get_stock_his_{year}.feather")
 
     print(df.head())
     
