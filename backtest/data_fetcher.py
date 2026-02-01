@@ -114,9 +114,14 @@ def get_all_data_feather(start_date: str = None, end_date: str = None) -> Dict[s
 
     stock_list_df=get_with_cache_feather(f"get_stock_list_{day}.pkl", get_stock_list)
     # stock_his_df=get_with_cache_feather(f"get_stock_his_{start_date}_{end_date}.pkl", lambda: get_stock_his2(stock_list_df, start=start_date, end=end_date))
-    stock_his_df=get_stock_his2(stock_list_df, start=start_date, end=end_date)
+    # stock_his_df=get_stock_his2(stock_list_df, start=start_date, end=end_date)
     # full_df=get_with_cache_feather(f"get_stock_rich_{start_date}_{end_date}.pkl", lambda: calc_tech(stock_his_df))
-    full_df=calc_tech(stock_his_df)
+    full_df=pd.DataFrame()
+    for year in range(2015, 2026):
+        stock_his_df=get_cache_feather(f"stock_his_{year}.feather")
+        full_df=pd.concat([full_df, stock_his_df], ignore_index=True)    
+
+    full_df=calc_tech(full_df)
     return build_index(full_df)
 
 if __name__ == "__main__":
@@ -127,7 +132,7 @@ if __name__ == "__main__":
     # print(f"总耗时: {datetime.now()-strt_time}")
     
 
-    df=get_cache_feather(f"get_stock_his_20150101_20251231.pkl")
+    # df=get_cache_feather(f"get_stock_his_20150101_20251231.pkl")
 
     for year, group in df.groupby(df["日期"].str[:4]):
         set_cache_feather(group,f"stock_his_{year}.feather")

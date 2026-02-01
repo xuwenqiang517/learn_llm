@@ -46,10 +46,10 @@ class BuySellInfo:
 
 
     def buy_string(self):
-        return f"[buy_string]{self.name} day:{self.buy_day} 买入：{self.buy_price}*{self.count}={self.buy_amount()} "
+        return f"[buy_string]{self.code} {self.name} day:{self.buy_day} 买入：{self.buy_price}*{self.count}={self.buy_amount()} "
 
     def sell_string(self):
-        return f"[sell_string]{self.name} day:{self.buy_day}->{self.sell_day}（{self.hold_day}天 价格:{self.buy_price}->{self.sell_price} 涨跌幅:{self.profit_rate()}% 盈亏:{self.profit_amount()} 卖出价:{self.sell_price}*{self.count}={self.sell_amount()}  卖出原因:{self.sell_reason}"
+        return f"[sell_string]{self.code} {self.name} day:{self.buy_day}->{self.sell_day}（{self.hold_day}天 价格:{self.buy_price}->{self.sell_price} 涨跌幅:{self.profit_rate()}% 盈亏:{self.profit_amount()} 卖出价:{self.sell_price}*{self.count}={self.sell_amount()}  卖出原因:{self.sell_reason}"
 
     def hold_string(self):
-        return f"[hold_string]{self.name} 买入:{self.buy_price}*{self.count}={self.buy_amount()} ({self.buy_day}) 持仓:{self.hold_day}天 金额:{self.hold_amount()}*{self.close}={self.hold_amount()} 收益率{self.profit_rate()}% 盈亏:{self.profit_amount()}"
+        return f"[hold_string]{self.code} {self.name} 买入:{self.buy_price}*{self.count}={self.buy_amount()} ({self.buy_day}) 持仓:{self.hold_day}天 金额:{self.hold_amount()}*{self.close}={self.hold_amount()} 收益率{self.profit_rate()}% 盈亏:{self.profit_amount()}"
